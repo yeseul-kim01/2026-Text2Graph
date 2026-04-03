@@ -12,6 +12,9 @@
 *.ckpt
 *.bin
 
+*.json
+*.pyc
+
 # 캐시
 __pycache__/
 wandb/
