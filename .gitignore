@@ -1,1 +1,19 @@
+
+# 재윤 이그노어 파일 
 /jaeyoon_plan
+
+
+
+
+
+
+# 학습된 모델 파일 
+*.pt
+*.ckpt
+*.bin
+
+# 캐시
+__pycache__/
+wandb/
+.ipynb_checkpoints/
+
