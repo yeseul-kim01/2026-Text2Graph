@@ -258,7 +258,13 @@ def official_evaluate(tmp, path, train_file = "train_annotated.json", dev_file =
         os.makedirs(truth_dir)
 
     fact_in_train_annotated = gen_train_facts(os.path.join(path, train_file), truth_dir)
-    fact_in_train_distant = gen_train_facts(os.path.join(path, "train_distant.json"), truth_dir)
+    
+    # train_distant.json이 없으면 빈 세트로 처리해서 에러를 방지합니다.
+    distant_file_path = os.path.join(path, "train_distant.json")
+    if os.path.exists(distant_file_path):
+        fact_in_train_distant = gen_train_facts(distant_file_path, truth_dir)
+    else:
+        fact_in_train_distant = set([])
 
     truth = json.load(open(os.path.join(path, dev_file)))
         
