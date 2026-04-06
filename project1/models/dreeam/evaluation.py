@@ -137,7 +137,7 @@ def merge_results(pred: list, pred_pseudo: list, features: list, thresh: float =
         merged_res.extend([{'title':r[2], 'h_idx':r[3], 't_idx':r[4], 'r': r[5]} for r in cand])
         return merged_res, thresh
 
-    if cand != []:
+    if len(cand) != 0:
         thresh, cand = select_thresh(cand, num_gt, correct, num_pred)
         merged_res.extend([{'title':r[2], 'h_idx':r[3], 't_idx':r[4], 'r': r[5]} for r in cand])
 
@@ -208,7 +208,7 @@ def to_official(preds: list, features: list, evi_preds: list = [], scores: list 
                     't_idx': t_idx[i],
                     'r': id2rel[p],
                 }
-            if evi_preds != []:
+            if len(evi_preds) != 0:
                 curr_evi = evi_preds[i]
                 evis = np.nonzero(curr_evi)[0].tolist() 
                 curr_result["evidence"] = [evi for evi in evis if evi < sents[i]]
