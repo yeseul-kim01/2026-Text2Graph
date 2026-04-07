@@ -81,12 +81,8 @@ class RelationHead(nn.Module):
                 self.threshold_linear = nn.Linear(hidden_size, 1, bias=True)
         else:
             # 기본 bilinear classifier (Stage 1)
-            self.classifier = nn.Sequential(
-                nn.Linear(pair_dim, hidden_size),
-                nn.ReLU(),
-                nn.Dropout(0.1),
-                nn.Linear(hidden_size, num_relations),
-            )
+            # 노트북 Stage1DocREModel과 동일: Linear(hidden*3, num_relations) 단일 레이어
+            self.classifier = nn.Linear(pair_dim, num_relations)
 
         # ── DREEAM Evidence Head ──
         if use_evidence:

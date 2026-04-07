@@ -43,6 +43,61 @@ from transformers import AutoTokenizer
 
 
 # ──────────────────────────────────────────────────────────────
+# RelationMapper — 노트북 Cell 6 기반
+# ──────────────────────────────────────────────────────────────
+class RelationMapper:
+    """
+    DocRED relation string ↔ integer id 변환.
+    노트북 Cell 6 기반: sorted key 정렬로 재현성 보장.
+
+    사용 방법 두 가지:
+      1. from_rel_info(rel_info) : rel_info.json 딕셔너리에서 생성 (노트북 방식)
+      2. from_rel2id(rel2id)     : 기존 rel2id 딕셔너리 래핑 (파이프라인 방식)
+    """
+
+    def __init__(self, rel2id: Dict[str, int]):
+        self.rel2id: Dict[str, int] = rel2id
+        self.id2rel: Dict[int, str] = {v: k for k, v in rel2id.items()}
+
+    @classmethod
+    def from_rel_info(cls, rel_info: Dict) -> "RelationMapper":
+        """
+        노트북 방식: rel_info.json 딕셔너리에서 sorted key로 rel2id 생성.
+        (노트북 Cell 6의 RelationMapper.__init__과 동일)
+        """
+        rel2id = {rel: idx for idx, rel in enumerate(sorted(rel_info.keys()))}
+        return cls(rel2id)
+
+    @classmethod
+    def from_rel2id(cls, rel2id: Dict[str, int]) -> "RelationMapper":
+        """파이프라인 방식: 기존 rel2id 딕셔너리(rel2id.json) 래핑."""
+        return cls(rel2id)
+
+    def get_id(self, rel: str) -> int:
+        return self.rel2id.get(rel, -1)
+
+    def get_rel(self, idx: int) -> str:
+        return self.id2rel.get(idx, "UNK")
+
+    def __len__(self) -> int:
+        return len(self.rel2id)
+
+
+def load_rel2id_from_rel_info(meta_dir: str, filename: str = "rel_info.json") -> Dict[str, int]:
+    """
+    rel_info.json에서 sorted key로 rel2id 생성.
+    노트북의 RelationMapper.from_rel_info()와 동일한 ID 할당.
+    (rel2id.json이 없고 rel_info.json만 있을 때 사용)
+    """
+    filepath = os.path.join(meta_dir, filename)
+    with open(filepath, "r") as f:
+        rel_info = json.load(f)
+    rel2id = {rel: idx for idx, rel in enumerate(sorted(rel_info.keys()))}
+    print(f"[Preprocessing] Built rel2id from {filename}: {len(rel2id)} relations")
+    return rel2id
+
+
+# ──────────────────────────────────────────────────────────────
 # DocRED 데이터셋 클래스
 # ──────────────────────────────────────────────────────────────
 class DocREDDataset(Dataset):

@@ -47,9 +47,8 @@ class DocumentEncoder(nn.Module):
         self.hidden_size = hidden_size
 
         # ── Pre-trained BERT 로드 ──
-        self.config = AutoConfig.from_pretrained(model_name)
-        self.config.output_hidden_states = True  # 모든 layer hidden states 출력
-        self.bert = AutoModel.from_pretrained(model_name, config=self.config)
+        # Stage 1: last_hidden_state만 사용하므로 output_hidden_states 불필요
+        self.bert = AutoModel.from_pretrained(model_name)
 
     def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         """
@@ -62,11 +61,9 @@ class DocumentEncoder(nn.Module):
         """
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
 
-        # ATLOP/DREEAM 스타일: 마지막 3개 layer의 평균 사용
-        # (DREEAM 논문 footnote 6 참조)
-        all_hidden = outputs.hidden_states  # tuple of [batch, seq, hidden]
-        # 마지막 3개 layer 평균
-        hidden_states = (all_hidden[-1] + all_hidden[-2] + all_hidden[-3]) / 3.0
+        # Stage 1 (노트북 Stage1DocREModel과 동일): last_hidden_state만 사용
+        # Stage 2+로 전환 시 ATLOP 스타일 3-layer 평균으로 교체 예정
+        hidden_states = outputs.last_hidden_state
 
         return hidden_states  # [batch, seq_len, hidden_size]
 
