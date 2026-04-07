@@ -1,0 +1,90 @@
+# ============================================================
+# Stage 3 Configuration: Stage 2 + Graph Reasoning (GAIN-lite)
+# 역할: 이기종 GNN으로 entity representation 보정
+# 변경점: graph_encoder.enabled = true 추가
+# 사용법: python scripts/train.py --config configs/stage3.yaml
+# ============================================================
+
+experiment:
+  name: "stage3_gain_lite"
+  stage: "stage3"
+  seed: 42
+  device: "cuda:0"
+
+data:
+  dataset: "docred"
+  data_dir: "data/docred"
+  train_file: "train_annotated.json"
+  dev_file: "dev.json"
+  test_file: "test.json"
+  distant_file: "train_distant.json"
+  meta_dir: "data/meta"
+  rel2id_file: "rel2id.json"
+  max_seq_length: 512
+  num_relations: 97
+
+encoder:
+  model_name: "bert-base-uncased"
+  hidden_size: 768
+  use_entity_marker: false
+
+entity_repr:
+  pooling: "logsumexp"
+
+relation_head:
+  classifier_type: "atlop"
+  threshold_type: "adaptive"
+  use_evidence_head: true
+
+evidence:
+  enabled: true
+  lambda_evidence: 0.1
+  teacher_signal_dir: "checkpoints/stage3/teacher"
+
+# ── [추가] Graph Encoder (GAIN-lite) ──
+graph_encoder:
+  enabled: true                         # ← Stage 3에서 활성화
+  gnn_type: "gcn"                       # gcn | gat
+  num_layers: 2
+  hidden_dim: 768                       # encoder hidden_size와 동일
+  dropout: 0.1
+  activation: "relu"
+  # Edge types (GAIN 논문 참고)
+  edge_types:
+    - "coref"                           # Co-reference: 동일 entity mention 간
+    - "cooccur"                         # Co-occurrence: 같은 문장 내 mention 간
+    - "cross_sent"                      # Cross-sentence: 인접 문장 entity 간
+  cross_sent_window: 1                  # 인접 문장 window 크기
+
+training:
+  pretrain_epochs: 30
+  pretrain_batch_size: 4
+  pretrain_gradient_accumulation: 1
+  finetune_epochs: 30
+  finetune_batch_size: 4
+  finetune_gradient_accumulation: 1
+
+  encoder_lr: 2.0e-5
+  classifier_lr: 1.0e-4
+  gnn_lr: 1.0e-4                        # ← GNN 전용 learning rate
+  weight_decay: 0.0
+  warmup_ratio: 0.06
+  max_grad_norm: 1.0
+
+  loss_type: "atlop"
+  no_relation_weight: 0.1
+
+  # Stage 2 체크포인트에서 이어서 학습
+  load_checkpoint: "checkpoints/stage2/best_model.pt"
+
+evaluation:
+  eval_during_training: true
+  eval_steps: 500
+  metric: "micro_f1"
+  compute_evidence_f1: true
+  compute_inter_intra_f1: true          # ← Inter/Intra F1 분석 활성화
+
+output:
+  save_dir: "checkpoints/stage3"
+  log_dir: "logs/stage3"
+  save_best_only: true

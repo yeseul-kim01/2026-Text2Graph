@@ -1,0 +1,81 @@
+# ============================================================
+# Stage 2 Configuration: ATLOP + DREEAM 강화
+# 역할: LogSumExp Pooling + Adaptive Threshold + Evidence Head
+# 변경점: entity_repr.pooling, relation_head, evidence 설정
+# 사용법: python scripts/train.py --config configs/stage2.yaml
+# ============================================================
+
+experiment:
+  name: "stage2_atlop_dreeam"
+  stage: "stage2"
+  seed: 42
+  device: "cuda:0"
+
+data:
+  dataset: "docred"
+  data_dir: "data/docred"
+  train_file: "train_annotated.json"
+  dev_file: "dev.json"
+  test_file: "test.json"
+  distant_file: "train_distant.json"
+  meta_dir: "data/meta"
+  rel2id_file: "rel2id.json"
+  max_seq_length: 512
+  num_relations: 97
+
+encoder:
+  model_name: "bert-base-uncased"
+  hidden_size: 768
+  use_entity_marker: false
+
+# ── [변경] LogSumExp Pooling ──
+entity_repr:
+  pooling: "logsumexp"                  # ← Stage 1의 mean에서 변경
+
+# ── [변경] ATLOP + DREEAM ──
+relation_head:
+  classifier_type: "atlop"              # ← bilinear에서 변경
+  threshold_type: "adaptive"            # ← fixed에서 변경
+  use_evidence_head: true               # ← DREEAM evidence head 활성화
+
+# ── DREEAM Evidence 설정 ──
+evidence:
+  enabled: true
+  lambda_evidence: 0.1                  # evidence loss 가중치 (BERT-base)
+  teacher_signal_dir: "checkpoints/stage2/teacher"  # teacher attention 저장 경로
+
+# ── Graph Encoder (미사용) ──
+graph_encoder:
+  enabled: false
+
+training:
+  # DREEAM Teacher 학습 (Step 1)
+  teacher_epochs: 30
+  # Silver evidence 추론 (Step 2) — infer_evidence.py에서 실행
+  # Student Self-training (Step 3)
+  pretrain_epochs: 30
+  pretrain_batch_size: 4
+  pretrain_gradient_accumulation: 1
+  finetune_epochs: 30
+  finetune_batch_size: 4
+  finetune_gradient_accumulation: 1
+
+  encoder_lr: 2.0e-5
+  classifier_lr: 1.0e-4
+  weight_decay: 0.0
+  warmup_ratio: 0.06
+  max_grad_norm: 1.0
+
+  loss_type: "atlop"                    # ← bce에서 변경
+  no_relation_weight: 0.1
+
+evaluation:
+  eval_during_training: true
+  eval_steps: 500
+  metric: "micro_f1"
+  compute_evidence_f1: true             # ← Evidence F1 측정 활성화
+
+output:
+  save_dir: "checkpoints/stage2"
+  log_dir: "logs/stage2"
+  save_best_only: true

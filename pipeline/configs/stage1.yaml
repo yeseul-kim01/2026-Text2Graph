@@ -1,0 +1,81 @@
+# ============================================================
+# Stage 1 Configuration: Baseline RE Model
+# 역할: BERT + Mean Pooling + Fixed Threshold Classifier
+# 사용법: python scripts/train.py --config configs/stage1.yaml
+# ============================================================
+
+# ── 실험 정보 ──
+experiment:
+  name: "stage1_baseline"
+  stage: "stage1"          # stage1 | stage2 | stage3
+  seed: 42
+  device: "cuda:0"         # cuda:0 | cpu
+
+# ── 데이터 경로 ──
+data:
+  dataset: "docred"
+  data_dir: "data/docred"
+  train_file: "train_annotated.json"
+  dev_file: "dev.json"
+  test_file: "test.json"
+  distant_file: "train_distant.json"    # distantly supervised data
+  meta_dir: "data/meta"
+  rel2id_file: "rel2id.json"
+  max_seq_length: 512
+  num_relations: 97                     # 96 relations + 1 no_relation
+
+# ── 인코더 설정 ──
+encoder:
+  model_name: "bert-base-uncased"       # HuggingFace 모델명
+  hidden_size: 768
+  use_entity_marker: false              # Stage 1에서는 미사용
+
+# ── Entity Representation ──
+entity_repr:
+  pooling: "mean"                       # mean (Stage 1) | logsumexp (Stage 2+)
+
+# ── Relation Head ──
+relation_head:
+  classifier_type: "bilinear"           # bilinear | atlop
+  threshold_type: "fixed"               # fixed (Stage 1) | adaptive (Stage 2+)
+  fixed_threshold: 0.5
+  use_evidence_head: false              # Stage 1에서는 미사용
+
+# ── Graph Encoder (Stage 3 전용) ──
+graph_encoder:
+  enabled: false
+
+# ── 학습 설정 ──
+training:
+  # Pre-training on distant data
+  pretrain_epochs: 30
+  pretrain_batch_size: 4
+  pretrain_gradient_accumulation: 1
+
+  # Fine-tuning on annotated data
+  finetune_epochs: 30
+  finetune_batch_size: 4
+  finetune_gradient_accumulation: 1
+
+  # Optimizer
+  encoder_lr: 2.0e-5
+  classifier_lr: 1.0e-4
+  weight_decay: 0.0
+  warmup_ratio: 0.06
+  max_grad_norm: 1.0
+
+  # Loss
+  loss_type: "bce"                      # bce (Stage 1) | atlop (Stage 2+)
+  no_relation_weight: 0.1               # no_relation class 가중치 조절
+
+# ── 평가 설정 ──
+evaluation:
+  eval_during_training: true
+  eval_steps: 500                       # 매 N step마다 평가
+  metric: "micro_f1"                    # 주 평가 지표
+
+# ── 저장 설정 ──
+output:
+  save_dir: "checkpoints/stage1"
+  log_dir: "logs/stage1"
+  save_best_only: true
