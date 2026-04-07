@@ -18,7 +18,7 @@ from typing import Dict, List, Optional
 from .encoder import DocumentEncoder
 from .entity_repr import EntityRepresentation
 from .relation_head import RelationHead
-from .graph_encoder import GraphEncoder
+from .graph_encoder import GraphEncoder, GraphUNetEncoder
 
 
 class DocREModel(nn.Module):
@@ -50,13 +50,29 @@ class DocREModel(nn.Module):
         # ── Layer 3: Graph Encoder (Stage 3 only) ──
         self.graph_encoder = None
         if graph_cfg.get("enabled", False):
-            self.graph_encoder = GraphEncoder(
-                hidden_dim=graph_cfg.get("hidden_dim", hidden_size),
-                num_layers=graph_cfg.get("num_layers", 2),
-                gnn_type=graph_cfg.get("gnn_type", "gcn"),
-                dropout=graph_cfg.get("dropout", 0.1),
-                cross_sent_window=graph_cfg.get("cross_sent_window", 1),
-            )
+            # [추가] YAML에서 architecture 설정을 읽어옵니다. (기본값은 "gain")
+            arch_type = graph_cfg.get("architecture", "gain")
+            
+            if arch_type == "unet":
+                print("🚀 [Model Init] Graph U-Net Encoder 활성화!")
+                self.graph_encoder = GraphUNetEncoder(
+                    hidden_dim=graph_cfg.get("hidden_dim", hidden_size),
+                    num_layers=graph_cfg.get("num_layers", 2),
+                    gnn_type=graph_cfg.get("gnn_type", "gcn"),
+                    dropout=graph_cfg.get("dropout", 0.1),
+                    cross_sent_window=graph_cfg.get("cross_sent_window", 1),
+                    # U-Net 전용 파라미터 추가
+                    pool_ratio=graph_cfg.get("pool_ratio", 0.5),
+                )
+            else:
+                print("🟢 [Model Init] 기본 GAIN Graph Encoder 활성화!")
+                self.graph_encoder = GraphEncoder(
+                    hidden_dim=graph_cfg.get("hidden_dim", hidden_size),
+                    num_layers=graph_cfg.get("num_layers", 2),
+                    gnn_type=graph_cfg.get("gnn_type", "gcn"),
+                    dropout=graph_cfg.get("dropout", 0.1),
+                    cross_sent_window=graph_cfg.get("cross_sent_window", 1),
+                )
 
         # ── Layer 4: Relation Head ──
         self.relation_head = RelationHead(
