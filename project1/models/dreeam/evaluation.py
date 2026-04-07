@@ -3,7 +3,7 @@ import os.path
 import json
 import numpy as np
 from tqdm import tqdm
-
+#dfjksdfjklsdfjksfjklsdjkl
 rel2id = json.load(open('meta/rel2id.json', 'r'))
 id2rel = {value: key for key, value in rel2id.items()}
 
@@ -137,7 +137,7 @@ def merge_results(pred: list, pred_pseudo: list, features: list, thresh: float =
         merged_res.extend([{'title':r[2], 'h_idx':r[3], 't_idx':r[4], 'r': r[5]} for r in cand])
         return merged_res, thresh
 
-    if cand != []:
+    if len(cand) != 0:
         thresh, cand = select_thresh(cand, num_gt, correct, num_pred)
         merged_res.extend([{'title':r[2], 'h_idx':r[3], 't_idx':r[4], 'r': r[5]} for r in cand])
 
@@ -194,7 +194,7 @@ def to_official(preds: list, features: list, evi_preds: list = [], scores: list 
     res = []
 
     for i in tqdm(range(preds.shape[0]), desc="preds"): # for each entity pair
-        if scores != []:
+        if len(scores) != 0:
             score = extract_relative_score(scores[i], topks[i]) 
             pred = topks[i]
         else:
@@ -208,11 +208,11 @@ def to_official(preds: list, features: list, evi_preds: list = [], scores: list 
                     't_idx': t_idx[i],
                     'r': id2rel[p],
                 }
-            if evi_preds != []:
+            if len(evi_preds) != 0:
                 curr_evi = evi_preds[i]
                 evis = np.nonzero(curr_evi)[0].tolist() 
                 curr_result["evidence"] = [evi for evi in evis if evi < sents[i]]
-            if scores != []:
+            if len(scores) != 0:
                 curr_result["score"] = score[np.where(topks[i] == p)].item()
             if p != 0 and p in np.nonzero(preds[i])[0].tolist():
                 official_res.append(curr_result)
@@ -258,7 +258,13 @@ def official_evaluate(tmp, path, train_file = "train_annotated.json", dev_file =
         os.makedirs(truth_dir)
 
     fact_in_train_annotated = gen_train_facts(os.path.join(path, train_file), truth_dir)
-    fact_in_train_distant = gen_train_facts(os.path.join(path, "train_distant.json"), truth_dir)
+    
+    # train_distant.json이 없으면 빈 세트로 처리해서 에러를 방지합니다.
+    distant_file_path = os.path.join(path, "train_distant.json")
+    if os.path.exists(distant_file_path):
+        fact_in_train_distant = gen_train_facts(distant_file_path, truth_dir)
+    else:
+        fact_in_train_distant = set([])
 
     truth = json.load(open(os.path.join(path, dev_file)))
         
