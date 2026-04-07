@@ -3,7 +3,7 @@ import os.path
 import json
 import numpy as np
 from tqdm import tqdm
-
+#dfjksdfjklsdfjksfjklsdjkl
 rel2id = json.load(open('meta/rel2id.json', 'r'))
 id2rel = {value: key for key, value in rel2id.items()}
 
