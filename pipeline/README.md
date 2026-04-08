@@ -50,14 +50,14 @@ Baseline              ATLOP + DREEAM         + GNN
 | 총괄 PM | `김예슬` |
 | Stage 1 담당 | `이수민` |
 | Stage 2 담당 | `박재윤` |
-| Stage 3 담당 | `박정현` |
+| Stage 3 / 4 담당 | `박정현` |
 
 #### Stage별 세부 담당
 
 **Stage 1** — 담당: `이수민`
 | 레이어 담당 | 파일 | 역할 |
 |------------|------|------|
-| `이수민` | `preprocessing.py` | DocRED 파싱, mention alignment, pair 생성 |
+| `이수민` | `파일명.py` | 담당 역할 |
 
 **Stage 2** — 담당: `박재윤`
 | 레이어 담당 | 파일 | 역할 |
