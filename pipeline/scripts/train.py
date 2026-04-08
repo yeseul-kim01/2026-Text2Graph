@@ -139,17 +139,8 @@ def train_one_epoch(model, dataloader, optimizer, scheduler, config, device):
 
 @torch.no_grad()
 def evaluate_on_dev(model, dataloader, config, device):
-    """
-    Dev set 평가 — 실제 Micro F1 계산.
-    노트북 Cell 9(micro_f1)와 Cell 12(evaluate) 기반으로 재구현.
-
-    INPUT:  model, dev dataloader, config, device
-    OUTPUT: Dict with F1, precision, recall
-    """
     model.eval()
-    threshold = config["relation_head"].get("fixed_threshold", 0.5)
 
-    # DocRED 표준: 'Na'(no_relation, index 0) 제외하고 F1 계산
     tp = fp = fn = 0
 
     for batch in tqdm(dataloader, desc="Evaluating", leave=False):
@@ -159,15 +150,24 @@ def evaluate_on_dev(model, dataloader, config, device):
         all_outputs = model(batch)
 
         for b, outputs in enumerate(all_outputs):
-            labels = batch["labels"][b].to(device)   # [num_pairs, num_relations]
+            labels = batch["labels"][b].to(device)
             if labels.size(0) == 0:
                 continue
 
-            logits = outputs["relation_logits"]       # [num_pairs, num_relations]
-            probs = torch.sigmoid(logits)
-            preds = (probs > threshold).float()
+            logits = outputs["relation_logits"]
 
-            # index 0('Na') 제외: [num_pairs, 96]
+            # ── 여기가 핵심 수정 ──
+            if "threshold_logits" in outputs:
+                # Adaptive Threshold: 모델이 학습한 기준으로 판단
+                th = outputs["threshold_logits"]  # [num_pairs, 1]
+                preds = (logits > th).float()
+            else:
+                # 고정 threshold (Stage 1 호환)
+                threshold = config["relation_head"].get("fixed_threshold", 0.5)
+                probs = torch.sigmoid(logits)
+                preds = (probs > threshold).float()
+            # ── 수정 끝 ──
+
             preds_pos = preds[:, 1:]
             labels_pos = labels[:, 1:]
 

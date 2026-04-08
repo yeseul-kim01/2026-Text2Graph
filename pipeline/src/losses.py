@@ -66,43 +66,42 @@ class BCEWithWeightLoss(nn.Module):
 
 
 class ATLOPLoss(nn.Module):
-    """
-    Stage 2+ 용: ATLOP Adaptive Threshold Loss.
-    각 pair에 대해 TH class를 기준으로 positive/negative relation을 구분.
-
-    INPUT:
-      - relation_logits  : [num_pairs, num_relations]
-      - threshold_logits : [num_pairs, 1]
-      - labels           : [num_pairs, num_relations]
-    OUTPUT:
-      - loss : scalar
-    """
-
     def __init__(self):
         super().__init__()
 
-    def forward(
-        self,
-        relation_logits: torch.Tensor,
-        threshold_logits: torch.Tensor,
-        labels: torch.Tensor,
-    ) -> torch.Tensor:
-        # TH logit을 relation logits에 concat
-        # logits: [num_pairs, num_relations + 1] (마지막이 TH)
+    def forward(self, relation_logits, threshold_logits, labels):
+        # [num_pairs, num_relations + 1]
         logits = torch.cat([relation_logits, threshold_logits], dim=-1)
+        num_rels = relation_logits.size(-1)
 
-        # Positive relations: label == 1
-        # Negative relations: label == 0 → TH가 이겨야 함
-
-        num_relations = relation_logits.size(-1)
-
-        # TH class의 label: positive relation이 하나도 없는 pair에서 1
-        th_label = (labels.sum(dim=-1) == 0).float().unsqueeze(-1)  # [num_pairs, 1]
+        # TH label: positive가 하나도 없으면 TH가 1
+        th_label = (labels[:, 1:].sum(dim=-1) == 0).float().unsqueeze(-1)
         full_labels = torch.cat([labels, th_label], dim=-1)
 
-        # Multi-label softmax loss (ATLOP 스타일)
-        # log_sum_exp over positive classes vs negative classes
-        loss = F.binary_cross_entropy_with_logits(logits, full_labels)
+        # ── 핵심: ATLOP ranking loss ──
+        # positive class는 TH보다 높아야 함
+        # negative class는 TH보다 낮아야 함
+        th_logit = logits[:, -1:]  # [num_pairs, 1]
+
+        # log(1 + sum_neg(exp(neg - TH))) + log(1 + sum_pos(exp(TH - pos)))
+        pos_mask = full_labels[:, :-1]   # [num_pairs, num_rels]
+        neg_mask = 1 - pos_mask
+
+        pos_logits = logits[:, :-1]  # [num_pairs, num_rels]
+
+        # negative part: exp(logit_neg - TH)
+        neg_loss = torch.logsumexp(
+            pos_logits * neg_mask + (-1e30) * pos_mask - th_logit, dim=-1
+        )
+        neg_loss = torch.log1p(torch.exp(neg_loss))
+
+        # positive part: exp(TH - logit_pos)
+        pos_loss = torch.logsumexp(
+            -pos_logits * pos_mask + (-1e30) * neg_mask + th_logit, dim=-1
+        )
+        pos_loss = torch.log1p(torch.exp(pos_loss))
+
+        loss = (neg_loss + pos_loss).mean()
         return loss
 
 
