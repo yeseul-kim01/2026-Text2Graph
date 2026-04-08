@@ -60,7 +60,6 @@ class EntityRepresentation(nn.Module):
 
         OUTPUT:
           - entity_vectors: List[Tensor[num_entities, hidden_size]]
-            각 batch 원소마다 entity 수가 다를 수 있으므로 List로 반환
         """
         batch_entity_vectors = []
 
@@ -71,39 +70,33 @@ class EntityRepresentation(nn.Module):
 
             for mention_list in entities:
                 if len(mention_list) == 0:
-                    # mention이 없는 경우 (truncation으로 잘림)
                     entity_vecs.append(torch.zeros(self.hidden_size, device=h.device))
                     continue
 
                 # ── Mention Representation ──
                 mention_vecs = []
                 for start, end in mention_list:
-                    # 범위 체크
+                    # [핵심 수정 1] 오리지널 DREEAM: mention의 첫 번째 토큰만 대표로 사용
                     start = max(0, start)
-                    end = min(end, h.size(0))
-                    if start >= end:
-                        continue
-
-                    span_hidden = h[start:end]  # [span_len, hidden_size]
-
-                    if self.pooling == "logsumexp":
-                        # LogSumExp pooling (ATLOP)
-                        # log(sum(exp(h_i))) — smooth max approximation
-                        m_vec = torch.logsumexp(span_hidden, dim=0)  # [hidden_size]
-                    else:
-                        # Mean pooling (Stage 1 baseline)
-                        m_vec = span_hidden.mean(dim=0)  # [hidden_size]
-
-                    mention_vecs.append(m_vec)
+                    if start < h.size(0):
+                        mention_vecs.append(h[start])
 
                 if len(mention_vecs) == 0:
                     entity_vecs.append(torch.zeros(self.hidden_size, device=h.device))
                     continue
 
-                # ── Entity Representation 통합 ──
-                # 동일 entity의 여러 mention vector를 평균
+                # 여러 개의 mention을 하나로 묶기
                 mention_stack = torch.stack(mention_vecs, dim=0)  # [num_mentions, hidden_size]
-                entity_vec = mention_stack.mean(dim=0)  # [hidden_size]
+
+                # ── Entity Representation 통합 ──
+                # [핵심 수정 2] forward 안에서 if문으로 Stage 1과 Stage 2를 나눕니다!
+                if self.pooling == "logsumexp":
+                    # Stage 2 (DREEAM): LogSumExp로 뭉치기
+                    entity_vec = torch.logsumexp(mention_stack, dim=0) 
+                else:
+                    # Stage 1 (Baseline): 평균(mean)으로 뭉치기
+                    entity_vec = mention_stack.mean(dim=0)
+
                 entity_vecs.append(entity_vec)
 
             # 모든 entity를 하나의 텐서로
