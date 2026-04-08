@@ -39,6 +39,18 @@ TODO (박재윤):
     - 수식: loss = log(1+Σexp(neg-TH)) + log(1+Σexp(TH-pos))
     - 근거: Zhou et al. (2021) ATLOP Section 3.1
     - 파일: src/losses.py → ATLOPLoss class
+    
+============================================================
+
+TODO (이수민):
+    fix: BCEWithWeightLoss 버그 수정
+
+    - 문제1: `self.num_relations`를 `__init__`에서 저장하지 않아 `forward`에서 AttributeError 발생 가능
+    - 수정: `self.num_relations = num_relations` 추가
+    - 문제2: `pos_weight`가 BCEWithLogitsLoss에 제대로 전달되지 않음
+    - 원인: `F.binary_cross_entropy_with_logits` 호출에서 `pos_weight` 인자가 누락
+
+============================================================
 """
 
 import torch
@@ -61,7 +73,8 @@ class BCEWithWeightLoss(nn.Module):
 
     def __init__(self, num_relations: int = 97, no_relation_weight: float = 0.1):
         super().__init__()
-        # no_relation (보통 index 0) 가중치를 낮춤
+        self.num_relations = num_relations
+        # no_relation (보통 index 0) 가중치를 낮춤 -- 클래스 불균형 완화 / 이수민
         weights = torch.ones(num_relations)
         weights[0] = no_relation_weight
         self.register_buffer("weights", weights)
