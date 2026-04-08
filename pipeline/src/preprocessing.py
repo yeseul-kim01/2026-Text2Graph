@@ -291,6 +291,11 @@ class DocREDDataset(Dataset):
         # DREEAM teacher attention (silver evidence)
         if self.teacher_attns is not None and doc_idx in self.teacher_attns:
             feature["teacher_attns"] = self.teacher_attns[doc_idx]
+            
+        # -- [수정] no_relation 라벨 부여 로직 (ATLOP에서는 TH로 처리하므로 생략 가능) : training first bug edit --
+        for pair_idx in range(num_pairs):
+            if relation_labels[pair_idx].sum() == 0:
+                relation_labels[pair_idx][0] = 1.0  # Na 라벨 부여
 
         return feature
 
