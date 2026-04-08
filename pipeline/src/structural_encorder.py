@@ -1,6 +1,14 @@
 # ──────────────────────────────────────────────────────────────
 # Graph U-Net 전용 Pooling & Unpooling 모듈
 # ──────────────────────────────────────────────────────────────
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from typing import List, Tuple
+
+# 기존 graph_encoder.py에서 기초 GNN 재료들을 빌려옵니다!
+from .graph_encoder import GCNLayer, GATLayer, build_entity_graph
+
 class GraphTopKPool(nn.Module):
     """
     학습 가능한 투영 벡터를 사용해 중요도가 높은 상위 K개의 노드만 남기는 풀링 레이어

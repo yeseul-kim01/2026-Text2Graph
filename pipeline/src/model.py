@@ -99,7 +99,7 @@ class DocREModel(nn.Module):
         )
 
         # ── Step 3: (Stage 3) Graph Reasoning ──
-        if self.graph_encoder is not None and self.stage == "stage3":
+        if self.graph_encoder is not None and self.stage in ["stage3","stage4"]
             refined_vecs = []
             for b in range(len(batch_entity_vecs)):
                 ev = batch_entity_vecs[b]
