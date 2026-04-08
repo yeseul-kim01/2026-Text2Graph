@@ -8,6 +8,8 @@
       Stage 1: Encoder → MeanPool → Bilinear Classifier
       Stage 2: Encoder → LogSumExp → ATLOP + DREEAM
       Stage 3: Encoder → LogSumExp → GNN → ATLOP + DREEAM
+      Stage 4: Encoder → LogSumExp → U-Net(2D Matrix) → ATLOP + DREEAM
+           
 ============================================================
 """
 
