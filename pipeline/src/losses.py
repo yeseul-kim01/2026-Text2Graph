@@ -28,6 +28,17 @@ TODO(정현)
         re_loss = loss_fn(outputs["relation_logits"], labels)
 
 ============================================================
+
+TODO (박재윤):
+    fix: ATLOPLoss를 논문 원본 ranking loss로 교체
+
+    - 기존: BCE with threshold class concat (단순 이진 분류)
+    - 수정: ATLOP 논문의 ranking loss 구현
+            positive relation은 TH보다 높게,
+            negative relation은 TH보다 낮게 학습하는 구조
+    - 수식: loss = log(1+Σexp(neg-TH)) + log(1+Σexp(TH-pos))
+    - 근거: Zhou et al. (2021) ATLOP Section 3.1
+    - 파일: src/losses.py → ATLOPLoss class
 """
 
 import torch

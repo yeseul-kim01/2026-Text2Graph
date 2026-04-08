@@ -21,6 +21,16 @@ TODO (수정 포인트):
   - [ ] WandB 로깅 통합
   - [ ] 멀티 GPU 지원 (DistributedDataParallel)
 ============================================================
+
+TODO (박재윤):
+    fix: evaluate_on_dev에서 Adaptive Threshold 적용
+
+    - 기존: 고정 threshold 0.5로 relation 채택 여부 판단 (Stage 1 방식)
+    - 수정: model이 학습한 threshold_logits와 비교하여 판단 (ATLOP 방식)
+    - 원인: 학습은 adaptive threshold로 했는데 평가는 고정 0.5를 사용하여
+            학습된 threshold가 무시되고 있었음
+    - 파일: scripts/train.py → evaluate_on_dev()
+    
 """
 
 import copy
