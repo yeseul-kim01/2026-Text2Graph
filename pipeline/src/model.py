@@ -101,9 +101,10 @@ class DocREModel(nn.Module):
         hidden_states = self.encoder(input_ids, attention_mask)
 
         # ── Step 2: Entity Representation ──
-        batch_entity_vecs = self.entity_repr(
+        repr_output = self.entity_repr(
             hidden_states, batch["entity_spans"]
         )
+        batch_entity_vecs = repr_output["entity_vectors"]   # List[Tensor] 추출
 
         # ── Step 3: (Stage 3) Graph Reasoning ──
         if self.graph_encoder is not None and self.stage in ["stage3","stage4"]:

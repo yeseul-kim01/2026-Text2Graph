@@ -56,8 +56,11 @@ class BCEWithWeightLoss(nn.Module):
         self.register_buffer("weights", weights)
 
     def forward(self, logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        pos_weight = torch.ones(self.num_relations, device=logits.device) * 10.0
         loss = F.binary_cross_entropy_with_logits(
-            logits, labels, weight=self.weights.unsqueeze(0),
+            logits, labels, 
+            weight=self.weights.unsqueeze(0).to(logits.device),
+            pos_weight=pos_weight,
         )
         return loss
 
