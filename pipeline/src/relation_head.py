@@ -104,26 +104,29 @@ class RelationHead(nn.Module):
         outputs = {}
 
         if self.classifier_type == "atlop":
-            # ── ATLOP Classifier ──
-            h_proj = self.head_proj(head_vecs)  # [num_pairs, hidden]
-            t_proj = self.tail_proj(tail_vecs)  # [num_pairs, hidden]
+            # # ── ATLOP Classifier ──
+            # h_proj = self.head_proj(head_vecs)  # [num_pairs, hidden]
+            # t_proj = self.tail_proj(tail_vecs)  # [num_pairs, hidden]
 
-            # Element-wise product for bilinear-like interaction
-            pair_repr = self.dropout(h_proj * t_proj)  # [num_pairs, hidden]
-#             # ── ATLOP / DREEAM Classifier ──
-#             if rs_vectors is not None:
-#                 # [수정] 문맥(rs)이 들어오면 순정 DREEAM 방식 작동!
-#                 h_proj = torch.tanh(self.head_extractor(torch.cat([head_vecs, rs_vectors], dim=-1)))
-#                 t_proj = torch.tanh(self.tail_extractor(torch.cat([tail_vecs, rs_vectors], dim=-1)))
-#             else:
-#                 # 에러 방지용 (rs가 없을 때)
-#                 h_proj = torch.tanh(self.head_extractor(torch.cat([head_vecs, torch.zeros_like(head_vecs)], dim=-1)))
-#                 t_proj = torch.tanh(self.tail_extractor(torch.cat([tail_vecs, torch.zeros_like(tail_vecs)], dim=-1)))
+            # # Element-wise product for bilinear-like interaction
+            # pair_repr = self.dropout(h_proj * t_proj)  # [num_pairs, hidden]
 
-#             # [수정] 블록 단위 연산 (Grouped Bilinear)
-#             b1 = h_proj.view(-1, self.emb_size // self.block_size, self.block_size)
-#             b2 = t_proj.view(-1, self.emb_size // self.block_size, self.block_size)
-#             pair_repr = (b1.unsqueeze(3) * b2.unsqueeze(2)).view(-1, self.emb_size * self.block_size)
+            # ── ATLOP / DREEAM Classifier ──
+            if rs_vectors is not None:
+                # [수정] 문맥(rs)이 들어오면 순정 DREEAM 방식 작동!
+                h_proj = torch.tanh(self.head_extractor(torch.cat([head_vecs, rs_vectors], dim=-1)))
+                t_proj = torch.tanh(self.tail_extractor(torch.cat([tail_vecs, rs_vectors], dim=-1)))
+            else:
+                # 에러 방지용 (rs가 없을 때)
+                h_proj = torch.tanh(self.head_extractor(torch.cat([head_vecs, torch.zeros_like(head_vecs)], dim=-1)))
+                t_proj = torch.tanh(self.tail_extractor(torch.cat([tail_vecs, torch.zeros_like(tail_vecs)], dim=-1)))
+
+            # [수정] 블록 단위 연산 (Grouped Bilinear)
+            b1 = h_proj.view(-1, self.emb_size // self.block_size, self.block_size)
+            b2 = t_proj.view(-1, self.emb_size // self.block_size, self.block_size)
+            pair_repr = (b1.unsqueeze(3) * b2.unsqueeze(2)).view(-1, self.emb_size * self.block_size)
+
+            pair_repr = self.dropout(pair_repr)
 
             relation_logits = self.bilinear(pair_repr)  # [num_pairs, num_relations]
             outputs["relation_logits"] = relation_logits
