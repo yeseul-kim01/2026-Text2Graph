@@ -14,7 +14,19 @@ OUTPUT:
   - relation_logits  : [num_pairs, num_relations]
   - evidence_logits  : Optional[num_pairs, num_sents] (DREEAM)
 ============================================================
+
+TODO (박재윤):
+  - [수정] 삭제) 기존 오리지널 ATLOP 방식의 단순 projection(head_proj, tail_proj) 로직 비활성화 (AttributeError 원인 해결).
+
+    (활성화) DREeAM 방식의 Context-aware extractor(head_extractor, tail_extractor) 로직 활성화. 문맥 벡터(rs_vectors) 정상 반영됨.
+
+    (활성화) 논문 디폴트 세팅인 블록 단위 연산(Grouped Bilinear) 주석 해제.
+
+    (추가) pair_repr 생성 직후 dropout 적용 코드 복구 (과적합 방지).
+  
 """
+
+
 
 import torch
 import torch.nn as nn
