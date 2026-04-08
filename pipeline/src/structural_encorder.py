@@ -1,6 +1,44 @@
+"""
+============================================================
+Global Structural Reasoning Layer (structural_encoder.py)
+============================================================
+역할: U-Net (또는 이기종 GNN) 구조를 활용하여 문서 전체의 
+      전역적 구조 추론(Global Structural Reasoning) 수행.
+      N x N 2D 매트릭스 연산을 통해 다단계 간접 추론(Multi-hop
+      Reasoning) 정보를 압축하여 기존 엔티티 표현을 보정함.
+
+INPUT:
+  - entity_vectors: LogSumExp pooling을 거친 초기 엔티티 벡터 [num_entities, hidden_dim]
+  - entity_spans: 문서 내 각 엔티티의 위치(span) 정보 List
+  - sent_map, num_sents: 문장 경계 및 토큰 매핑 정보
+
+OUTPUT:
+  - refined_vectors: 주변 문맥 및 Multi-hop 정보가 융합되어
+                     완벽하게 정제된 엔티티 벡터 [num_entities, hidden_dim]
+
+담당: 후처리 + 그래프 담당
+
+TODO (수정 포인트):
+  - [ ] U-Net 노드 압축 비율(pool_ratio) 하이퍼파라미터 최적화
+  - [ ] 메모리 절약을 위한 2D Pair Matrix 구성 로직 효율화
+  - [ ] GAIN(이기종 GNN) 모델과의 Ablation Study를 위한 스위칭 호환성 유지
+============================================================
+"""
+
+
+
+
 # ──────────────────────────────────────────────────────────────
 # Graph U-Net 전용 Pooling & Unpooling 모듈
 # ──────────────────────────────────────────────────────────────
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from typing import List, Tuple
+
+# 기존 graph_encoder.py에서 기초 GNN 재료들을 빌려옵니다!
+from .graph_encoder import GCNLayer, GATLayer, build_entity_graph
+
 class GraphTopKPool(nn.Module):
     """
     학습 가능한 투영 벡터를 사용해 중요도가 높은 상위 K개의 노드만 남기는 풀링 레이어

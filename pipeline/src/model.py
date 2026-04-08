@@ -14,6 +14,8 @@
 TODO (김예슬):
   - [추가] compute_loss() 매번 새 업데이트 X -> GPU 에 모델과 함께 업로드 (버그 해결용 - loss 계산 시마다 CPU로 이동되는 문제 방지)
 
+      Stage 4: Encoder → LogSumExp → U-Net(2D Matrix) → ATLOP + DREEAM
+           
 ============================================================
 """
 
@@ -104,7 +106,7 @@ class DocREModel(nn.Module):
         )
 
         # ── Step 3: (Stage 3) Graph Reasoning ──
-        if self.graph_encoder is not None and self.stage == "stage3":
+        if self.graph_encoder is not None and self.stage in ["stage3","stage4"]:
             refined_vecs = []
             for b in range(len(batch_entity_vecs)):
                 ev = batch_entity_vecs[b]

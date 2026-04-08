@@ -1,0 +1,90 @@
+# ============================================================
+# Stage 4 Configuration: Stage 2 + Graph Reasoning (U-Net)
+# 역할: U-Net 형태의 GNN으로 entity representation 보정
+# 사용법: python scripts/train.py --config configs/stage4.yaml
+# ============================================================
+
+experiment:
+  name: "stage4_unet_graph"             # 실험 이름 변경
+  stage: "stage4"                       # 스테이지 이름 변경
+  seed: 42
+  device: "cuda:0"
+
+data:
+  dataset: "docred"
+  data_dir: "data/docred"
+  train_file: "train_annotated.json"
+  dev_file: "dev.json"
+  test_file: "test.json"
+  # distant_file: "train_distant.json"  # ← [수정] 에러 방지를 위해 주석 처리 (사용 안 함)
+  meta_dir: "data/meta"
+  rel2id_file: "rel2id.json"
+  max_seq_length: 512
+  num_relations: 97
+
+encoder:
+  model_name: "bert-base-uncased"
+  hidden_size: 768
+  use_entity_marker: false
+
+entity_repr:
+  pooling: "logsumexp"
+
+relation_head:
+  classifier_type: "atlop"
+  threshold_type: "adaptive"
+  use_evidence_head: true
+
+evidence:
+  enabled: true
+  lambda_evidence: 0.1
+  teacher_signal_dir: "checkpoints/stage4/teacher" # 경로 stage4로 변경
+
+# ── [수정] Graph Encoder (U-Net) ──
+graph_encoder:
+  enabled: true                         
+  architecture: "unet"                  # ← [핵심] u-net 구조 활성화!
+  pool_ratio: 0.5                       # ← [핵심] U-Net 전용 노드 압축 비율 (50%)
+  gnn_type: "gcn"                       
+  num_layers: 2
+  hidden_dim: 768                       
+  dropout: 0.1
+  activation: "relu"
+  edge_types:
+    - "coref"                           
+    - "cooccur"                         
+    - "cross_sent"                      
+  cross_sent_window: 1                  
+
+training:
+  pretrain_epochs: 30
+  pretrain_batch_size: 4
+  pretrain_gradient_accumulation: 1
+  finetune_epochs: 30
+  finetune_batch_size: 4
+  finetune_gradient_accumulation: 1
+
+  encoder_lr: 2.0e-5
+  classifier_lr: 1.0e-4
+  gnn_lr: 1.0e-4                        
+  weight_decay: 0.0
+  warmup_ratio: 0.06
+  max_grad_norm: 1.0
+
+  loss_type: "atlop"
+  no_relation_weight: 0.1
+
+  # Stage 3(GAIN)과 동일하게 Stage 2 모델을 베이스로 가져와서 비교합니다.
+  load_checkpoint: "checkpoints/stage2/best_model.pt"
+
+evaluation:
+  eval_during_training: true
+  eval_steps: 500
+  metric: "micro_f1"
+  compute_evidence_f1: true
+  compute_inter_intra_f1: true          
+
+output:
+  save_dir: "checkpoints/stage4"        # 저장 경로 stage4로 변경
+  log_dir: "logs/stage4"                # 로그 경로 stage4로 변경
+  save_best_only: true

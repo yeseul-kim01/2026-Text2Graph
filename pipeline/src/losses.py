@@ -19,6 +19,14 @@ OUTPUT: scalar loss 값
 TODO ( 수정 포인트):
   - [ ] Focal loss 실험 (class imbalance 대응)
   - [ ] Label smoothing 적용
+
+TODO(정현)
+ - RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu! 수정
+    -  labels = labels.to(outputs["relation_logits"].device) 
+    - labels를 모델 출력값(GPU)과 똑같은 디바이스로 보내도록 수정
+    - loss_fn = BCEWithWeightLoss(num_relations, no_relation_weight).to(outputs["relation_logits"].device)
+        re_loss = loss_fn(outputs["relation_logits"], labels)
+
 ============================================================
 """
 
@@ -173,11 +181,16 @@ def compute_loss(
       - Dict with 'total_loss', 're_loss', 'evidence_loss'
     """
     result = {}
+    
+    # labels를 모델 출력값(GPU)과 똑같은 디바이스로 이동
+    labels = labels.to(outputs["relation_logits"].device)
 
     if loss_type == "bce":
         # Stage 1: BCE
-        loss_fn = BCEWithWeightLoss(num_relations, no_relation_weight)
+        #LOSS_FN을 GOU로 전송
+        loss_fn = BCEWithWeightLoss(num_relations, no_relation_weight).to(outputs["relation_logits"].device)
         re_loss = loss_fn(outputs["relation_logits"], labels)
+
     elif loss_type == "atlop":
         # Stage 2+: ATLOP ATL
         if "threshold_logits" in outputs:
