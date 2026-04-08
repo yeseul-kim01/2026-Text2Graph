@@ -55,6 +55,7 @@ class RelationHead(nn.Module):
         fixed_threshold: float = 0.5,
         use_evidence: bool = False,
         max_num_sents: int = 25,
+        dropout: float = 0.1,
     ):
         super().__init__()
         self.hidden_size = hidden_size
@@ -63,6 +64,7 @@ class RelationHead(nn.Module):
         self.threshold_type = threshold_type
         self.fixed_threshold = fixed_threshold
         self.use_evidence = use_evidence
+        self.dropout = nn.Dropout(dropout)
 
         # ── Pair Representation: [e_h; e_t; e_h ⊙ e_t] ──
         pair_dim = hidden_size * 3  # concat + element-wise product
@@ -81,7 +83,7 @@ class RelationHead(nn.Module):
                 self.threshold_linear = nn.Linear(hidden_size, 1, bias=True)
         else:
             # 기본 bilinear classifier (Stage 1)
-            # 노트북 Stage1DocREModel과 동일: Linear(hidden*3, num_relations) 단일 레이어
+            # 노트북 Stage1DocREModel과 동일: Dropout → Linear(hidden*3, num_relations)
             self.classifier = nn.Linear(pair_dim, num_relations)
 
         # ── DREEAM Evidence Head ──
@@ -128,7 +130,7 @@ class RelationHead(nn.Module):
             t_proj = self.tail_proj(tail_vecs)  # [num_pairs, hidden]
 
             # Element-wise product for bilinear-like interaction
-            pair_repr = h_proj * t_proj  # [num_pairs, hidden]
+            pair_repr = self.dropout(h_proj * t_proj)  # [num_pairs, hidden]
 
             relation_logits = self.bilinear(pair_repr)  # [num_pairs, num_relations]
             outputs["relation_logits"] = relation_logits
@@ -145,13 +147,14 @@ class RelationHead(nn.Module):
                 outputs["evidence_logits"] = evidence_logits
         else:
             # ── 기본 Bilinear Classifier (Stage 1) ──
+            # 노트북과 동일: dropout → classifier
             pair_repr = torch.cat([
                 head_vecs,
                 tail_vecs,
                 head_vecs * tail_vecs,  # element-wise product
             ], dim=-1)  # [num_pairs, hidden*3]
 
-            relation_logits = self.classifier(pair_repr)  # [num_pairs, num_relations]
+            relation_logits = self.classifier(self.dropout(pair_repr))  # [num_pairs, num_relations]
             outputs["relation_logits"] = relation_logits
 
         return outputs
