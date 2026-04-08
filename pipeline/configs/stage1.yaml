@@ -39,7 +39,7 @@ entity_repr:
 relation_head:
   classifier_type: "bilinear"           # bilinear | atlop
   threshold_type: "fixed"               # fixed (Stage 1) | adaptive (Stage 2+)
-  fixed_threshold: 0.3
+  fixed_threshold: 0.4
   use_evidence_head: false              # Stage 1에서는 미사용
 
 # ── Graph Encoder (Stage 3 전용) ──
@@ -49,12 +49,12 @@ graph_encoder:
 # ── 학습 설정 ──
 training:
   # Pre-training on distant data
-  pretrain_epochs: 30
+  pretrain_epochs: 50
   pretrain_batch_size: 4
   pretrain_gradient_accumulation: 4
 
   # Fine-tuning on annotated data
-  finetune_epochs: 30
+  finetune_epochs: 50
   finetune_batch_size: 4
   finetune_gradient_accumulation: 4
 
