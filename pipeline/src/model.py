@@ -19,6 +19,7 @@ from .encoder import DocumentEncoder
 from .entity_repr import EntityRepresentation
 from .relation_head import RelationHead
 from .graph_encoder import GraphEncoder
+from .structural_encorder import GraphUNetEncoder # [추가] U-Net Graph Encoder 모듈 임포트
 
 class DocREModel(nn.Module):
     def __init__(self, config: Dict):
