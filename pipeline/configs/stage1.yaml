@@ -9,7 +9,7 @@ experiment:
   name: "stage1_baseline"
   stage: "stage1"          # stage1 | stage2 | stage3
   seed: 42
-  device: "cuda:0"         # cuda:0 | cpu
+  device: "cuda"            # cuda | cpu
 
 # ── 데이터 경로 ──
 data:
@@ -28,6 +28,7 @@ data:
 encoder:
   model_name: "bert-base-uncased"       # HuggingFace 모델명
   hidden_size: 768
+  dropout: 0.1
   use_entity_marker: false              # Stage 1에서는 미사용
 
 # ── Entity Representation ──
@@ -50,19 +51,20 @@ training:
   # Pre-training on distant data
   pretrain_epochs: 30
   pretrain_batch_size: 4
-  pretrain_gradient_accumulation: 1
+  pretrain_gradient_accumulation: 4
 
   # Fine-tuning on annotated data
   finetune_epochs: 30
   finetune_batch_size: 4
-  finetune_gradient_accumulation: 1
+  finetune_gradient_accumulation: 4
 
   # Optimizer
   encoder_lr: 2.0e-5
   classifier_lr: 1.0e-4
-  weight_decay: 0.0
+  weight_decay: 0.01
   warmup_ratio: 0.06
   max_grad_norm: 1.0
+  early_stopping_patience: 15
 
   # Loss
   loss_type: "bce"                      # bce (Stage 1) | atlop (Stage 2+)

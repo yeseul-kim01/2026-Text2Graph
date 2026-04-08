@@ -82,6 +82,7 @@ class DocREModel(nn.Module):
             threshold_type=rel_cfg.get("threshold_type", "fixed"),
             fixed_threshold=rel_cfg.get("fixed_threshold", 0.5),
             use_evidence=rel_cfg.get("use_evidence_head", False),
+            dropout=enc_cfg.get("dropout", 0.1),
         )
 
     def forward(self, batch: Dict) -> List[Dict]:
