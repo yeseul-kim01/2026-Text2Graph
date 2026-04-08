@@ -18,8 +18,7 @@ from typing import Dict, List, Optional
 from .encoder import DocumentEncoder
 from .entity_repr import EntityRepresentation
 from .relation_head import RelationHead
-from .graph_encoder import GraphEncoder, GraphUNetEncoder
-
+from .graph_encoder import GraphEncoder
 
 class DocREModel(nn.Module):
     def __init__(self, config: Dict):
