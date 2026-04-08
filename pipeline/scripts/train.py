@@ -17,9 +17,8 @@ OUTPUT: checkpoints, logs, 평가 결과
 
 담당: 전체 (공용 실행 스크립트)
 
-TODO (수정 포인트):
-  - [ ] WandB 로깅 통합
-  - [ ] 멀티 GPU 지원 (DistributedDataParallel)
+TODO (김예슬) :
+  - [완] loss 계산 시마다 CPU로 이동되는 문제 해결 (compute_loss()제거 및 GPU에서 직접 계산)
 ============================================================
 """
 
@@ -40,7 +39,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import load_config, set_seed, save_checkpoint, load_checkpoint, count_parameters
 from src.preprocessing import DocREDDataset, docred_collate_fn, load_rel2id, create_dataloader
 from src.model import DocREModel
-from src.losses import compute_loss
+# from src.losses import compute_loss
 from src.evaluation import evaluate_re
 
 
@@ -88,17 +87,18 @@ def train_one_epoch(model, dataloader, optimizer, scheduler, config, device):
                 if labels.size(0) == 0:
                     continue
 
-                loss_dict = compute_loss(
-                    outputs=outputs,
-                    labels=labels,
-                    evidence_labels=batch["evidence_labels"][b],
-                    num_sents=batch["num_sents"][b],
-                    loss_type=loss_cfg.get("loss_type", "bce"),
-                    lambda_evidence=evi_cfg.get("lambda_evidence", 0.0),
-                    no_relation_weight=loss_cfg.get("no_relation_weight", 0.1),
-                    num_relations=config["data"]["num_relations"],
-                )
-                batch_loss = batch_loss + loss_dict["total_loss"]
+                logits = outputs["relation_logits"]
+
+                # loss 직접 계산 (model 내부 loss_fn 사용)
+                loss = model.loss_fn(logits, labels)
+
+                # 디버깅 로그 (중요)
+                probs = torch.sigmoid(logits)
+                print("logits mean:", logits.mean().item())
+                print("prob mean:", probs.mean().item())
+                print("positive ratio:", (probs > 0.5).float().mean().item())
+
+                batch_loss = batch_loss + loss
                 valid_count += 1
 
         if valid_count == 0:

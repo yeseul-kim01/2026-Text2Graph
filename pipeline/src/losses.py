@@ -50,15 +50,25 @@ class BCEWithWeightLoss(nn.Module):
 
     def __init__(self, num_relations: int = 97, no_relation_weight: float = 0.1):
         super().__init__()
+        self.num_relations = num_relations  # ← 추가: forward에서 사용
         # no_relation (보통 index 0) 가중치를 낮춤
         weights = torch.ones(num_relations)
         weights[0] = no_relation_weight
         self.register_buffer("weights", weights)
 
     def forward(self, logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
-        pos_weight = torch.ones(self.num_relations, device=logits.device) * 10.0
+        # ── [버그 수정 — 김예슬] pos_weight 설정 ──
+        # pos_weight는 "positive label을 놓치면 N배 페널티"라는 의미.
+        # - Na (index 0): 이미 95%가 positive → pos_weight=1 (기본값, 추가 가중치 불필요)
+        # - 실제 relation (index 1~96): 매우 희소 → pos_weight 높게
+        #
+        # 이전 코드: 모든 클래스에 pos_weight=10 → Na에도 10배 → 모델이 전부 positive로 찍음
+        # 수정: Na=1, 나머지=5 (10은 너무 공격적, 5가 적절)
+        pos_weight = torch.ones(self.num_relations, device=logits.device)
+        pos_weight[1:] = 5.0  # 실제 relation만 가중치 부여 (Na 제외)
+
         loss = F.binary_cross_entropy_with_logits(
-            logits, labels, 
+            logits, labels,
             weight=self.weights.unsqueeze(0).to(logits.device),
             pos_weight=pos_weight,
         )

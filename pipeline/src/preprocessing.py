@@ -273,6 +273,15 @@ class DocREDDataset(Dataset):
         # no_relation: 어떤 relation도 없는 pair에 대해 표시
         # (ATLOP에서는 별도 TH class로 처리하므로 여기서는 생략)
 
+        # ── [버그 수정 — 김예슬] Na 라벨 부여 ──
+        # 어떤 relation도 없는 pair에 Na(index 0) = 1.0 부여.
+        # ⚠ 반드시 torch.tensor() 호출 전에 해야 함!
+        #    torch.tensor()는 numpy를 복사하므로, 이후에 numpy를 수정해도
+        #    이미 만들어진 텐서에는 반영되지 않음.
+        for pair_idx in range(num_pairs):
+            if relation_labels[pair_idx].sum() == 0:
+                relation_labels[pair_idx][0] = 1.0  # Na 라벨 부여
+
         feature = {
             "doc_idx": doc_idx,
             "title": title,
@@ -291,11 +300,6 @@ class DocREDDataset(Dataset):
         # DREEAM teacher attention (silver evidence)
         if self.teacher_attns is not None and doc_idx in self.teacher_attns:
             feature["teacher_attns"] = self.teacher_attns[doc_idx]
-            
-        # -- [수정] no_relation 라벨 부여 로직 (ATLOP에서는 TH로 처리하므로 생략 가능) : training first bug edit --
-        for pair_idx in range(num_pairs):
-            if relation_labels[pair_idx].sum() == 0:
-                relation_labels[pair_idx][0] = 1.0  # Na 라벨 부여
 
         return feature
 

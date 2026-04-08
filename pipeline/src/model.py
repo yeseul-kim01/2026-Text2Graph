@@ -28,7 +28,7 @@ from .entity_repr import EntityRepresentation
 from .relation_head import RelationHead
 from .graph_encoder import GraphEncoder
 from .structural_encorder import GraphUNetEncoder # [추가] U-Net Graph Encoder 모듈 임포트
-
+from .losses import BCEWithWeightLoss
 class DocREModel(nn.Module):
     def __init__(self, config: Dict):
         super().__init__()
@@ -90,6 +90,12 @@ class DocREModel(nn.Module):
             fixed_threshold=rel_cfg.get("fixed_threshold", 0.5),
             use_evidence=rel_cfg.get("use_evidence_head", False),
             dropout=enc_cfg.get("dropout", 0.1),
+        )
+        
+        loss_cfg = config.get("training",{})
+        self.loss_fn = BCEWithWeightLoss(
+            num_relations=num_relations,
+            no_relation_weight=loss_cfg.get("no_relation_weight", 0.1),
         )
 
     def forward(self, batch: Dict) -> List[Dict]:
