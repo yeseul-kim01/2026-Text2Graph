@@ -87,3 +87,7 @@ python scripts/evaluate.py --config configs/stage1.yaml \
 - [DREEAM](https://github.com/YoumiMa/dreeam) — Ma et al. (2023)
 - [GAIN](https://github.com/PKUnlp-icler/GAIN) — Zeng et al. (2020)
 - [SSAN](https://github.com/BenfengXu/SSAN) — Xu et al. (2021)
+
+
+## 남은 작업 
+- Graph Encoder 의 분기 처리, stage 4 생성하기 
