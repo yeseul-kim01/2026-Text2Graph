@@ -22,10 +22,10 @@ OUTPUT:
 
 담당: 후처리 + 그래프 담당
 
-TODO ( 수정 포인트):
-  - [ ] GAT 레이어 구현 (ablation 실험용)
-  - [ ] 이기종 그래프의 Sentence/Document 노드 추가
-  - [ ] Edge weight 학습 가능하게 확장
+TODO (김예슬):
+  - [완] GAT 레이어 구현 (ablation 실험용)
+  - [완] 이기종 그래프의 Sentence/Document 노드 추가
+  - [완] Edge weight 학습 가능하게 확장
 ============================================================
 """
 
@@ -40,9 +40,6 @@ from typing import List, Tuple, Dict, Optional
 # ──────────────────────────────────────────────────────────────
 class GCNLayer(nn.Module):
     """
-    기본 Graph Convolutional Network 레이어.
-    h^{l+1} = σ(D^{-1/2} A D^{-1/2} h^l W^l)
-
     INPUT:  node_features [N, in_dim], adj_matrix [N, N]
     OUTPUT: updated_features [N, out_dim]
     """

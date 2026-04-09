@@ -14,19 +14,7 @@ OUTPUT:
   - relation_logits  : [num_pairs, num_relations]
   - evidence_logits  : Optional[num_pairs, num_sents] (DREEAM)
 ============================================================
-
-TODO (박재윤):
-  - [수정] 삭제) 기존 오리지널 ATLOP 방식의 단순 projection(head_proj, tail_proj) 로직 비활성화 (AttributeError 원인 해결).
-
-    (활성화) DREeAM 방식의 Context-aware extractor(head_extractor, tail_extractor) 로직 활성화. 문맥 벡터(rs_vectors) 정상 반영됨.
-
-    (활성화) 논문 디폴트 세팅인 블록 단위 연산(Grouped Bilinear) 주석 해제.
-
-    (추가) pair_repr 생성 직후 dropout 적용 코드 복구 (과적합 방지).
-  
 """
-
-
 
 import torch
 import torch.nn as nn
@@ -116,29 +104,26 @@ class RelationHead(nn.Module):
         outputs = {}
 
         if self.classifier_type == "atlop":
-            # # ── ATLOP Classifier ──
-            # h_proj = self.head_proj(head_vecs)  # [num_pairs, hidden]
-            # t_proj = self.tail_proj(tail_vecs)  # [num_pairs, hidden]
+            # ── ATLOP Classifier ──
+            h_proj = self.head_proj(head_vecs)  # [num_pairs, hidden]
+            t_proj = self.tail_proj(tail_vecs)  # [num_pairs, hidden]
 
-            # # Element-wise product for bilinear-like interaction
-            # pair_repr = self.dropout(h_proj * t_proj)  # [num_pairs, hidden]
+            # Element-wise product for bilinear-like interaction
+            pair_repr = self.dropout(h_proj * t_proj)  # [num_pairs, hidden]
+#             # ── ATLOP / DREEAM Classifier ──
+#             if rs_vectors is not None:
+#                 # [수정] 문맥(rs)이 들어오면 순정 DREEAM 방식 작동!
+#                 h_proj = torch.tanh(self.head_extractor(torch.cat([head_vecs, rs_vectors], dim=-1)))
+#                 t_proj = torch.tanh(self.tail_extractor(torch.cat([tail_vecs, rs_vectors], dim=-1)))
+#             else:
+#                 # 에러 방지용 (rs가 없을 때)
+#                 h_proj = torch.tanh(self.head_extractor(torch.cat([head_vecs, torch.zeros_like(head_vecs)], dim=-1)))
+#                 t_proj = torch.tanh(self.tail_extractor(torch.cat([tail_vecs, torch.zeros_like(tail_vecs)], dim=-1)))
 
-            # ── ATLOP / DREEAM Classifier ──
-            if rs_vectors is not None:
-                # [수정] 문맥(rs)이 들어오면 순정 DREEAM 방식 작동!
-                h_proj = torch.tanh(self.head_extractor(torch.cat([head_vecs, rs_vectors], dim=-1)))
-                t_proj = torch.tanh(self.tail_extractor(torch.cat([tail_vecs, rs_vectors], dim=-1)))
-            else:
-                # 에러 방지용 (rs가 없을 때)
-                h_proj = torch.tanh(self.head_extractor(torch.cat([head_vecs, torch.zeros_like(head_vecs)], dim=-1)))
-                t_proj = torch.tanh(self.tail_extractor(torch.cat([tail_vecs, torch.zeros_like(tail_vecs)], dim=-1)))
-
-            # [수정] 블록 단위 연산 (Grouped Bilinear)
-            b1 = h_proj.view(-1, self.emb_size // self.block_size, self.block_size)
-            b2 = t_proj.view(-1, self.emb_size // self.block_size, self.block_size)
-            pair_repr = (b1.unsqueeze(3) * b2.unsqueeze(2)).view(-1, self.emb_size * self.block_size)
-
-            pair_repr = self.dropout(pair_repr)
+#             # [수정] 블록 단위 연산 (Grouped Bilinear)
+#             b1 = h_proj.view(-1, self.emb_size // self.block_size, self.block_size)
+#             b2 = t_proj.view(-1, self.emb_size // self.block_size, self.block_size)
+#             pair_repr = (b1.unsqueeze(3) * b2.unsqueeze(2)).view(-1, self.emb_size * self.block_size)
 
             relation_logits = self.bilinear(pair_repr)  # [num_pairs, num_relations]
             outputs["relation_logits"] = relation_logits
