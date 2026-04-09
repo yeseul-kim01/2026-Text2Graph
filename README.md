@@ -630,111 +630,42 @@ training:
 ```
 
 ---
-
 ## 6. Stage 2 — ATLOP + DREEAM
 
 ### 개요
-
 Stage 1 Baseline에서 다음 두 논문의 핵심 기법을 적용하여 성능을 강화합니다.
-
 - **ATLOP** (Zhou et al., 2021): Adaptive Threshold + Grouped Bilinear Classifier
 - **DREEAM** (Ma et al., 2023): Evidence-guided 문맥 벡터 활용 Self-training
 
-### Stage 1 → Stage 2 변경 사항
+### 🚀 모델 배포 및 성능 변화 (v1 → v2)
+학습된 모델의 체크포인트 및 버전별 파일은 아래 허깅페이스 저장소에서 확인하실 수 있습니다.
+* **HuggingFace Repository:** [park990/hihi_model (Tree/Main)](https://huggingface.co/park990/hihi_model/tree/main)
 
+| 버전 | F1 Score | Precision | Recall | 비고 |
+|---|---|---|---|---|
+| **v1 (초기)** | 56.64% | 60.74% | 53.06% | 로직 오류 포함 (아래 트러블슈팅 참고) |
+| **v2 (최종)** | **59.25%** | **63.11%** | **55.83%** | 오류 수정 및 정상화 완료 |
+
+### 🛠 트러블슈팅: v1 실패 원인 및 해결 (How to fix)
+v1에서 성능이 정체되었던 원인을 분석하고, 다음 두 가지 핵심 로직 오류를 해결하여 v2를 완성했습니다.
+
+1. **ATLOP Loss 구현 오류 수정 (`src/losses.py` → `ATLOPLoss`)**
+   - **기존(v1):** BCE with threshold class concat (단순 이진 분류 형태) 사용.
+   - **수정(v2):** ATLOP 논문 원본의 **Ranking Loss** 구현. Positive relation은 Threshold보다 높게, Negative relation은 Threshold보다 낮게 학습되도록 구조 변경.
+   - **수식:** `loss = log(1+Σexp(neg-TH)) + log(1+Σexp(TH-pos))`
+
+2. **Evaluation 시 Adaptive Threshold 적용 누락 해결 (`scripts/train.py` → `evaluate_on_dev`)**
+   - **기존(v1):** 고정 threshold(0.5)로 relation 채택 여부를 판단하여, 기껏 학습된 adaptive threshold가 평가 시 무시됨.
+   - **수정(v2):** 모델이 학습한 `threshold_logits`와 비교하여 판단하도록 ATLOP 평가 방식 정상 적용.
+
+### Stage 1 → Stage 2 핵심 변경 사항
 | 구성 요소 | Stage 1 | Stage 2 |
 |-----------|---------|---------|
 | Entity Pooling | `mean` | **`logsumexp`** |
 | Classifier | Bilinear MLP | **ATLOP Grouped Bilinear** |
 | Threshold | Fixed (0.5) | **Adaptive (pair별 학습)** |
-| Context Vector | 없음 | **rs 벡터 (head-tail 공통 문맥)** |
-| Loss | BCE | **ATL Loss** |
+| Loss | BCE | **ATL Ranking Loss** |
 | Evidence Head | 없음 | **DREEAM Evidence Head + KL Loss** |
-
-### 레이어 흐름
-
-```
-[Layer 1] BERT Encoder
-      ↓  hidden_states [B, 512, 768]
-[Layer 2] Entity Representation  (LogSumExp Pooling)
-      ↓  entity_vectors [num_entities, 768]
-[model.py] rs_vector 추출
-      - head/tail 벡터와 hidden_states 간 attention 계산
-      - 두 entity가 공통으로 주목하는 문맥 벡터(rs) 추출
-      ↓  rs_vectors [num_pairs, 768]
-[Layer 4] ATLOP Relation Head
-      - head_proj = tanh(Linear([e_h; rs]))
-      - tail_proj = tanh(Linear([e_t; rs]))
-      - Grouped Bilinear: b1 × b2 → [num_pairs, 97]
-      - Adaptive Threshold: threshold_logit per pair
-      - Evidence Head: evidence_logits [num_pairs, num_sents]
-      ↓
-[Loss] ATL Loss + λ × Evidence KL Loss  (λ=0.1)
-```
-
-### 주요 변경 모듈 상세
-
-#### LogSumExp Pooling (`entity_repr.py`)
-
-Stage 1의 Mean Pooling을 대체하여, mention별 중요도에 자동 가중치를 부여합니다.
-
-```python
-# Mean (Stage 1): 모든 mention을 동등하게 취급
-entity_vec = mention_stack.mean(dim=0)
-
-# LogSumExp (Stage 2): 값이 큰 mention이 자연스럽게 더 큰 가중치를 받음
-entity_vec = torch.logsumexp(mention_stack, dim=0)
-```
-
-#### rs 벡터 추출 (`model.py` forward 내부)
-
-ATLOP 논문 방식으로 head/tail entity가 **공통으로 주목하는 문맥**을 추출합니다.
-
-```python
-# 1. head/tail 벡터와 문서 전체 토큰 간 유사도(attention) 계산
-h_att = softmax(h_vecs @ h_states.T)     # [num_pairs, seq_len]
-t_att = softmax(t_vecs @ h_states.T)     # [num_pairs, seq_len]
-
-# 2. 두 attention의 교집합 (공통 문맥)
-ht_att = h_att * t_att
-ht_att = ht_att / (ht_att.sum(dim=-1, keepdim=True) + 1e-30)
-
-# 3. 공통 문맥 벡터 생성
-rs_vectors = ht_att @ h_states           # [num_pairs, hidden_size]
-```
-
-#### ATLOP Grouped Bilinear (`relation_head.py`)
-
-```python
-# head/tail 벡터에 문맥 벡터(rs)를 concat 후 투영
-h_proj = tanh(head_extractor(cat([head_vecs, rs_vectors])))   # [num_pairs, emb_size]
-t_proj = tanh(tail_extractor(cat([tail_vecs, rs_vectors])))   # [num_pairs, emb_size]
-
-# Block-wise Bilinear (Grouped Bilinear)
-b1 = h_proj.view(-1, emb_size // block_size, block_size)
-b2 = t_proj.view(-1, emb_size // block_size, block_size)
-pair_repr = (b1.unsqueeze(3) * b2.unsqueeze(2)).view(-1, emb_size * block_size)
-
-# Relation 분류 + Adaptive Threshold
-relation_logits = bilinear(pair_repr)          # [num_pairs, 97]
-threshold_logits = threshold_linear(pair_repr)  # [num_pairs, 1]
-```
-
-#### ATL Loss + Evidence KL Loss (`losses.py`)
-
-```python
-# ATL Loss: TH class를 concat하여 positive/negative relation 분리
-logits = cat([relation_logits, threshold_logits], dim=-1)   # [num_pairs, 98]
-th_label = (labels.sum(dim=-1) == 0).float().unsqueeze(-1)  # positive 없으면 TH=1
-re_loss = bce_with_logits(logits, cat([labels, th_label]))
-
-# Evidence Loss (DREEAM): 예측 attention과 근거 문장 분포 간 KL divergence
-target_dist = evidence_labels → softmax normalized distribution
-pred_dist   = softmax(evidence_logits)
-evi_loss    = kl_div(pred_dist.log(), target_dist)
-
-total_loss = re_loss + λ(0.1) × evi_loss
-```
 
 ### Stage 2 설정 (`configs/stage2.yaml`) 핵심
 
