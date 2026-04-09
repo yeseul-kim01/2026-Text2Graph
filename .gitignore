@@ -1,2 +1,9 @@
 # DS STORE 제거 
 .DS_Store
+# DocRED large files
+pipeline/data/docred/train_distant.json
+pipeline/data/docred/train_distant.json.gz
+
+# DocRED large files
+pipeline/data/docred/train_distant.json
+pipeline/data/docred/train_distant.json.gz
