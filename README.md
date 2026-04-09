@@ -514,6 +514,14 @@ training:
 
 ---
 
+### Stage3 1차 결과
+
+![alt text](image.png)
+
+> F1 score: 58.76%, Precision: 65.65%, Recall: 53.19%
+
+
+
 ## 8. Stage 4 — Graph U-Net
 
 ### 개요
