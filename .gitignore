@@ -15,4 +15,4 @@ pipeline/data/docred/train_distant.json.gz
 pipeline/notebooks/yeseul_huggingFace.ipynb
 
 # model 파일 
-pipeline/data/model/stage2preTrain/*
+pipeline/data/model/*
