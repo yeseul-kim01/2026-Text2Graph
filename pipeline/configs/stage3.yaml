@@ -50,7 +50,7 @@ graph_encoder:
   dropout: 0.1
   activation: "relu"
   cross_sent_window: 1
-  residual_alpha: 0.3
+  residual_alpha: 0.2
   # Edge types (GAIN 논문 참고)
   edge_types:
     - "coref"                           # Co-reference: 동일 entity mention 간
