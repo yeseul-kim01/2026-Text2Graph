@@ -165,6 +165,8 @@ def build_entity_graph(
     num_entities: int,
     num_sents: int,
     cross_sent_window: int = 1,
+    device=None,
+    dtype=None
 ) -> torch.Tensor:
     """
     structural_encorder.py 호환용 entity-only graph builder.
@@ -172,9 +174,10 @@ def build_entity_graph(
     """
     device = "cpu"
     if num_entities == 0:
-        return torch.zeros(0, 0)
 
-    adj = torch.zeros(num_entities, num_entities)
+        return torch.zeros(0, 0, device=device, dtype=dtype)
+
+    adj = torch.zeros(num_entities, num_entities, device=device, dtype=dtype)
 
     entity_sents: List[set] = []
     for spans in entity_spans:
