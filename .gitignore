@@ -10,3 +10,9 @@ pipeline/data/docred/train_distant.json.gz
 
 # 네오포제이 세팅 값
 .env
+
+# huggingface 업로드 ipynb
+pipeline/notebooks/yeseul_huggingFace.ipynb
+
+# model 파일 
+pipeline/data/model/stage2preTrain/*
