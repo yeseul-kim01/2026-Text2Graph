@@ -191,7 +191,8 @@ def build_entity_graph(
         for j in range(i + 1, num_entities):
             common = entity_sents[i] & entity_sents[j]
             # [수정] : 같은 연결 조건 내에서도, 양쪽 entity가 모두 한 문장에만 등장하는 경우는 edge를 추가하지 않도록
-            if len(common) > 0 and min(len(entity_sents[i]), len(entity_sents[j])) > 1:                 
+            if len(common) > 0:
+                adj[i, j] = 1.0
                 adj[j, i] = 1.0
                 continue
 
@@ -316,7 +317,7 @@ def build_heterogeneous_graph(
             linked = False
             for si in entity_sents[i]:
                 for sj in entity_sents[j]:
-                    if abs(si - sj) == 1: # [수정] : cross_sent_window이 1인 경우에만 edge 추가
+                    if abs(si - sj) <= cross_sent_window: # [수정] : cross_sent_window 기준으로 변경 
                         adj[i, j] = 1.0
                         adj[j, i] = 1.0
                         linked = True
@@ -327,8 +328,6 @@ def build_heterogeneous_graph(
     # entity-sentence
     # [수정] 여러 sentence에 등장하는 entity만 sentence node와 연결
     for ent_id, sents in enumerate(entity_sents):
-        if len(sents) <= 1:
-            continue
         for sid in sents:
             s_idx = sent_offset + sid
             adj[ent_id, s_idx] = 1.0
@@ -368,7 +367,7 @@ class GraphEncoder(nn.Module):
     def __init__(
         self,
         hidden_dim: int = 768,
-        num_layers: int = 1,
+        num_layers: int = 2,
         gnn_type: str = "gcn",
         dropout: float = 0.1,
         cross_sent_window: int = 1,
