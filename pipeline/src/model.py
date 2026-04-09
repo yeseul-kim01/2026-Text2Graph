@@ -142,7 +142,9 @@ class DocREModel(nn.Module):
                     num_layers=graph_cfg.get("num_layers", 2),
                     gnn_type=graph_cfg.get("gnn_type", "gcn"),
                     dropout=graph_cfg.get("dropout", 0.1),
-                    cross_sent_window=graph_cfg.get("cross_sent_window", 1),
+                    cross_sent_window=graph_cfg.get("cross_sent_window", 1), 
+                    residual_alpha=graph_cfg.get("residual_alpha", 0.3),
+                    num_heads=graph_cfg.get("num_heads", 4),
                 )
 
         # =========================================================
