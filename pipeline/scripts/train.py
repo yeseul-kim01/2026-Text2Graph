@@ -80,7 +80,6 @@ from src.utils import load_config, set_seed, save_checkpoint, load_checkpoint, c
 from src.preprocessing import DocREDDataset, docred_collate_fn, load_rel2id, create_dataloader
 from src.model import DocREModel
 from src.losses import compute_loss
-from src.evaluation import evaluate_re
 
 
 # ══════════════════════════════════════════════════════════════
