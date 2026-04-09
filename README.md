@@ -246,405 +246,101 @@ pipeline/
 
 ---
 
-## 5. Stage 1 — Baseline RE 상세
+## 5. Stage 1 — Baseline RE
 
 ### 개요
 
 BERT 인코더 + Mean Pooling + Bilinear 분류기로 구성된 기본 관계 추출 모델입니다.
 Baseline을 수립하고, 이후 Stage에서 각 구성 요소를 개선하는 기준점 역할을 합니다.
 
----
-
-### 레이어별 Input / Output 요약
+### 레이어별 파이프라인
 
 ```
 Raw DocRED JSON
-      │
-      ▼ [Layer 0] preprocessing.py
-      │  IN  : doc["sents"], doc["vertexSet"], doc["labels"]
-      │  OUT : input_ids [512]
-      │        attention_mask [512]
-      │        entity_spans  List[ List[Tuple(start, end)] ]
-      │        entity_pairs  List[Tuple(h_id, t_id)]
-      │        labels        [num_pairs, 97]
-      │        sent_map      List[int]
-      │        evidence_labels  Dict
-      │
-      ▼ [Layer 1] encoder.py
-      │  IN  : input_ids [B, 512], attention_mask [B, 512]
-      │  OUT : hidden_states [B, 512, 768]
-      │
-      ▼ [Layer 2] entity_repr.py  (pooling="mean")
-      │  IN  : hidden_states [B, 512, 768]
-      │        entity_spans
-      │  OUT : entity_vectors  List[ [num_entities, 768] ]
-      │
-      ▼ [Layer 4] relation_head.py  (classifier_type="bilinear")
-      │  IN  : entity_vectors [num_entities, 768]
-      │        entity_pairs   [(h_id, t_id), ...]
-      │  OUT : relation_logits [num_pairs, 97]
-      │
-      ▼ losses.py  (loss_type="bce")
-      │  IN  : relation_logits [num_pairs, 97]
-      │        labels [num_pairs, 97]
-      │  OUT : scalar BCE loss
-      │
-      ▼ postprocessing.py
-         IN  : relation_logits, threshold=0.5
-         OUT : List[{h, t, r, score}]
+  → [Layer 0] preprocessing.py   : 토큰화, entity span 변환, pair 생성, multi-hot label
+  → [Layer 1] encoder.py         : BERT 마지막 3개 layer 평균 → hidden_states [B,512,768]
+  → [Layer 2] entity_repr.py     : mention Mean Pooling → entity_vectors [num_entities,768]
+  → [Layer 4] relation_head.py   : concat(e_h, e_t, e_h⊙e_t) → MLP → logits [num_pairs,97]
+  → losses.py                    : Weighted BCE Loss (NA weight=0.1)
+  → postprocessing.py            : sigmoid → threshold 0.5 → triple 추출
 ```
 
----
-
-### 각 모듈 상세 설명
-
-#### Layer 0 — Preprocessing (`src/preprocessing.py`)
-
-DocRED 원본 JSON을 BERT가 처리할 수 있는 텐서 형태로 변환합니다.
-
-**처리 단계**
-
-| Step | 내용 |
-|------|------|
-| **Step 1** | 문장별 토큰 리스트를 하나의 문서 시퀀스로 연결, `sent_map` 생성 |
-| **Step 2** | HuggingFace Tokenizer로 subword 토큰화, `word_ids` 추출 |
-| **Step 3** | entity mention의 `sent_id + pos` → 문서 전체 subword 인덱스로 변환 |
-| **Step 4** | N개 entity → N×(N-1)개 방향성 entity pair 생성 |
-| **Step 5** | pair별 multi-hot relation label 벡터 [num_pairs, 97] 생성 |
-
-**주요 클래스 및 함수**
-
-```python
-DocREDDataset(
-    data_dir,           # DocRED JSON 파일 경로
-    data_file,          # 파일명 (예: "train_annotated.json")
-    tokenizer,          # HuggingFace AutoTokenizer
-    rel2id,             # {"P17": 0, "P131": 1, ...} 딕셔너리
-    max_seq_len=512,
-    stage="stage1",
-)
-
-create_dataloader(data_dir, data_file, tokenizer, rel2id, ...)
-load_rel2id(meta_dir, filename="rel2id.json")
-```
-
-**출력 Feature 구조**
-
-| 키 | 형태 | 설명 |
-|----|------|------|
-| `input_ids` | `[512]` | BERT subword 토큰 인덱스 |
-| `attention_mask` | `[512]` | 패딩 마스크 (1=실제 토큰, 0=패딩) |
-| `entity_spans` | `List[List[Tuple]]` | entity별 mention의 subword 범위 목록 |
-| `entity_pairs` | `List[Tuple]` | (head_id, tail_id) 방향성 쌍 |
-| `labels` | `[num_pairs, 97]` | multi-hot relation label |
-| `sent_map` | `List[int]` | subword별 소속 문장 인덱스 (Stage 3 그래프 구성용) |
-| `num_sents` | `int` | 문서 내 총 문장 수 |
-| `evidence_labels` | `Dict` | pair별 근거 문장 정보 (DREEAM용) |
-
-**subword span 변환 로직 (`_find_subword_span`)**
-
-원본 단어 인덱스 `[abs_start, abs_end)` → tokenizer의 `word_ids`를 순회하여
-해당 범위에 매핑되는 첫 번째 / 마지막 subword 인덱스를 반환합니다.
-
-```
-원본 토큰: ["Barack", "Obama", "visited", "France"]
-              0          1         2          3
-
-BERT subword: [CLS, "Barack", "O", "##bam", "##a", "visited", "France", SEP]
-word_ids:      [None,  0,       1,    1,       1,      2,         3,      None]
-
-entity "Obama" pos=[1,2]  →  sw_start=2, sw_end=5
-```
-
-**DataLoader collate_fn**
-
-가변 길이 entity/pair 정보를 배치로 묶기 위해 커스텀 `docred_collate_fn`을 사용합니다.
-`input_ids`, `attention_mask`는 스택 텐서로, 나머지는 리스트 형태로 배치됩니다.
-
----
-
-#### Layer 1 — Document Encoder (`src/encoder.py`)
-
-사전 학습된 BERT를 사용하여 문서 전체의 token-level contextual representation을 생성합니다.
-
-```
-INPUT : input_ids      [B, 512]
-        attention_mask [B, 512]
-        ↓
-       BERT (bert-base-uncased, 12 layers)
-        ↓
-       마지막 3개 layer hidden states 평균
-        ↓
-OUTPUT: hidden_states  [B, 512, 768]
-```
-
-**구현 포인트**
-
-- `AutoConfig`에서 `output_hidden_states=True` 설정으로 모든 레이어의 hidden states 추출
-- ATLOP/DREEAM 논문 방식을 따라 **마지막 3개 레이어의 평균** 사용
-
-```python
-# 마지막 3개 layer 평균 (단일 레이어보다 더 풍부한 표현)
-hidden_states = (all_hidden[-1] + all_hidden[-2] + all_hidden[-3]) / 3.0
-```
-
----
-
-#### Layer 2 — Entity Representation (`src/entity_repr.py`)
-
-token-level hidden states에서 각 entity의 벡터 표현을 추출하고 통합합니다.
-
-```
-INPUT : hidden_states [B, 512, 768]
-        entity_spans  (batch별 entity별 mention span 목록)
-        ↓
-       각 mention span의 첫 번째 subword 토큰 추출
-        ↓
-       여러 mention → 하나의 entity 벡터로 통합 (Pooling)
-        ↓
-OUTPUT: entity_vectors  List[ [num_entities, 768] ]
-```
-
-**Stage 1: Mean Pooling**
-
-동일 entity의 여러 mention 벡터를 **산술 평균**합니다.
-
-```python
-entity_vec = mention_stack.mean(dim=0)  # [num_mentions, 768] → [768]
-```
-
-- 구현이 단순하고 안정적
-- mention별 중요도 차이를 반영하지 못한다는 한계 존재
-
-**Stage 2에서의 개선: LogSumExp Pooling**
-
-```python
-entity_vec = torch.logsumexp(mention_stack, dim=0)
-```
-
-- 중요한 mention에 더 큰 가중치가 자연스럽게 부여됨 (ATLOP 논문 방식)
-
----
-
-#### Layer 4 — Relation Head (`src/relation_head.py`)
-
-Entity pair의 벡터를 결합하여 relation을 multi-label 분류합니다.
-
-**Stage 1: Bilinear Classifier**
-
-```
-INPUT : entity_vectors [num_entities, 768]
-        entity_pairs   [(h_id, t_id), ...]
-        ↓
-       head/tail 벡터 추출
-       pair_repr = concat(e_h, e_t, e_h ⊙ e_t)  → [num_pairs, 768×3]
-        ↓
-       MLP: Linear(2304→768) → ReLU → Dropout(0.1) → Linear(768→97)
-        ↓
-OUTPUT: relation_logits [num_pairs, 97]
-```
-
-**Pair Representation 구성**
-
-| 구성 요소 | 차원 | 역할 |
-|-----------|------|------|
-| `e_h` | 768 | head entity 벡터 |
-| `e_t` | 768 | tail entity 벡터 |
-| `e_h ⊙ e_t` | 768 | element-wise 곱 (상호작용 포착) |
-| → concatenate | 2304 | 최종 pair representation |
-
-**예측 (Inference)**
-
-```python
-probs = torch.sigmoid(relation_logits)
-predictions = (probs > 0.5).float()   # Fixed Threshold = 0.5
-```
-
-> **Stage 2에서의 개선**: Bilinear MLP → ATLOP Grouped Bilinear + Adaptive Threshold
->
-> - head/tail 벡터에 문맥 벡터(rs)를 결합하여 관계 분류
-> - 고정 임계값(0.5) 대신 pair마다 학습되는 adaptive threshold 사용
-
----
-
-#### Loss 함수 (`src/losses.py`)
-
-**Stage 1: Weighted BCE Loss**
-
-```
-INPUT : relation_logits [num_pairs, 97]
-        labels          [num_pairs, 97]  (multi-hot)
-        ↓
-       Binary Cross-Entropy with Logits
-       (NA relation class 가중치 0.1로 낮춰 클래스 불균형 대응)
-        ↓
-OUTPUT: scalar loss
-```
-
-```python
-weights = torch.ones(97)
-weights[0] = 0.1   # NA(no_relation) class에 낮은 가중치 부여
-loss = F.binary_cross_entropy_with_logits(logits, labels, weight=weights)
-```
-
-> **클래스 불균형 이유**: DocRED에서 대부분의 entity pair는 관계가 없음(NA).
-> NA class에 낮은 가중치를 부여해 모델이 positive relation에 집중하도록 합니다.
-
----
-
-#### Postprocessing (`src/postprocessing.py`)
-
-모델의 `relation_logits`를 구조화된 Triple 리스트로 변환합니다.
-
-```
-INPUT : relation_logits [num_pairs, 97]
-        entity_pairs    [(h_id, t_id), ...]
-        id2rel          {rel_idx: "P17", ...}
-        threshold=0.5
-        ↓
-       sigmoid → 임계값 적용 → positive relation 추출
-        ↓
-       중복 triple 제거
-        ↓
-OUTPUT: [
-  {"h": 0, "t": 1, "r": "P17", "score": 0.83,
-   "head_name": "Obama", "tail_name": "USA"},
-  ...
-]
-```
-
----
-
-#### Evaluation (`src/evaluation.py`)
-
-**주요 지표**
-
-| 지표 | 설명 | 활용 Stage |
-|------|------|-----------|
-| **Micro F1** | 모든 relation triple을 동등하게 취급한 F1 | 전체 |
-| **Ign F1** | 학습/테스트 셋 공통 triple 제외 F1 (DocRED 표준 지표) | 전체 |
-| **Evidence F1** | 근거 문장 예측 F1 | Stage 2/3/4 |
-| **Intra/Inter F1** | 문장 내 / 문장 간 관계별 F1 분석 | Stage 3/4 |
-
-```python
-compute_micro_f1(predictions, gold_labels, ignore_train_triples)
-# → {"precision": ..., "recall": ..., "f1": ..., "ign_f1": ...}
-
-evaluate_evidence(pred_evidence, gold_evidence)
-# → {"evidence_f1": ...}
-```
-
----
-
-#### 통합 모델 (`src/model.py`)
-
-`DocREModel`은 위 모든 레이어를 하나의 `nn.Module`로 통합합니다.
-`config["experiment"]["stage"]` 값에 따라 레이어가 선택적으로 활성화됩니다.
-
-```python
-model = DocREModel(config)
-
-# forward 흐름
-hidden_states = model.encoder(input_ids, attention_mask)            # Layer 1
-entity_vecs   = model.entity_repr(hidden_states, entity_spans)      # Layer 2
-# (Stage 3/4) entity_vecs = model.graph_encoder(entity_vecs, ...)  # Layer 3
-#   Stage 3: GraphEncoder (GAIN-lite Flat GNN)
-#   Stage 4: GraphUNetEncoder (U-Net 계층적 GNN)
-outputs       = model.relation_head(entity_vecs, entity_pairs)      # Layer 4
-```
-
----
-
-### 학습 로직 (`scripts/train.py`)
-
-```
-1. Config 로드 (configs/stage1.yaml)
-2. Tokenizer + rel2id 로드
-3. DataLoader 생성 (train / dev)
-4. DocREModel 초기화
-5. Optimizer 구성
-   - BERT Encoder params : lr = 2e-5  (사전 학습 가중치 → 낮은 lr)
-   - 나머지 레이어 params : lr = 1e-4  (새로 초기화 → 높은 lr)
-6. Linear Warmup Scheduler (warmup_ratio=0.06)
-
-for epoch in range(30):
-    ┌─ Train ──────────────────────────────────────────────┐
-    │  for batch in train_loader:                          │
-    │      forward() → relation_logits                     │
-    │      compute_loss() → BCE Loss                       │
-    │      backward()                                      │
-    │      clip_grad_norm(max_norm=1.0)                    │
-    │      optimizer.step() / scheduler.step()             │
-    └──────────────────────────────────────────────────────┘
-    ┌─ Dev Eval ────────────────────────────────────────────┐
-    │  evaluate_on_dev() → dev_loss, num_predictions        │
-    └───────────────────────────────────────────────────────┘
-    save_checkpoint(epoch)
-
-save_checkpoint(best_model.pt)
-```
-
-**Optimizer 파라미터 그룹 분리 이유**
-
-BERT는 사전 학습된 모델이므로 낮은 lr(2e-5)로 fine-tuning하고,
-새로 추가된 분류 레이어는 높은 lr(1e-4)로 빠르게 학습합니다.
-
----
-
-### Stage 1 설정 (`configs/stage1.yaml`)
+### 핵심 구성 요소 요약
+
+| 구성 요소 | Stage 1 설정 | 설명 |
+|-----------|-------------|------|
+| Entity Pooling | `mean` | 동일 entity의 여러 mention 벡터를 산술 평균 |
+| Classifier | Bilinear MLP | concat(e_h, e_t, e_h⊙e_t) [2304] → Linear → ReLU → Linear → [97] |
+| Threshold | Fixed (0.5) | 고정 임계값으로 relation 채택 판단 |
+| Loss | Weighted BCE | NA class 가중치 0.1로 클래스 불균형 대응 |
+| Evidence Head | 없음 | — |
+| Graph Encoder | 없음 | — |
+
+### Optimizer 설정
+
+| 파라미터 그룹 | Learning Rate | 이유 |
+|--------------|---------------|------|
+| BERT Encoder | 2e-5 | 사전 학습 가중치 → 낮은 lr로 fine-tuning |
+| 나머지 레이어 | 1e-4 | 새로 초기화 → 높은 lr로 빠르게 학습 |
+
+- Linear Warmup Scheduler (warmup_ratio=0.06)
+- Gradient Clipping (max_norm=1.0)
+- 30 Epochs
+
+### Stage 1 설정 (`configs/stage1.yaml`) 핵심
 
 ```yaml
-experiment:
-  name: "stage1_baseline"
-  stage: "stage1"
-  seed: 42
-  device: "cuda:0"
-
-data:
-  num_relations: 97
-  max_seq_length: 512
-
-encoder:
-  model_name: "bert-base-uncased"
-  hidden_size: 768
-
 entity_repr:
-  pooling: "mean"                  # Stage 1 핵심: 평균 풀링
-
+  pooling: "mean"                  # 평균 풀링
 relation_head:
-  classifier_type: "bilinear"      # Stage 1 핵심: MLP 분류기
+  classifier_type: "bilinear"      # MLP 분류기
   threshold_type: "fixed"
   fixed_threshold: 0.5
   use_evidence_head: false
-
 graph_encoder:
-  enabled: false                   # Stage 1: GNN 미사용
-
+  enabled: false                   # GNN 미사용
 training:
-  loss_type: "bce"                 # Stage 1 핵심: Binary Cross-Entropy
+  loss_type: "bce"                 # Binary Cross-Entropy
   encoder_lr: 2.0e-5
   classifier_lr: 1.0e-4
   finetune_epochs: 30
-  max_grad_norm: 1.0
   no_relation_weight: 0.1
 ```
----
 
-#### Stage 1 중간 평가 결과 (Epoch 15)
+### 평가 지표
 
-| Split   | Precision | Recall  | F1      | Ign F1  |
-|---------|----------|---------|---------|---------|
-| **Dev**  | 56.39%   | 38.63%  | 45.85%  | 44.19%  |
-| **Test** | 56.76%   | 43.57%  | 49.30%  | 47.17%  |
+| 지표 | 설명 |
+|------|------|
+| **Micro F1** | 모든 relation triple을 동등하게 취급한 F1 |
+| **Ign F1** | 학습/테스트 셋 공통 triple 제외 F1 (DocRED 표준 지표) |
 
----
+### Stage 1 중간 평가 결과 (Epoch 15)
 
-#### 리포트 목표 (Stage 1)
+| Split | Precision | Recall | F1 | Ign F1 |
+|-------|-----------|--------|----|--------|
+| **Dev** | 56.39% | 38.63% | 45.85% | 44.19% |
+| **Test** | 56.76% | 43.57% | 49.30% | 47.17% |
 
-| Metric      | Target   | Actual   | Status        |
-|-------------|----------|----------|---------------|
-| **Dev F1**  | ≥ 60.00% | 45.85%   | ⚠️ Fail       |
-| **Test F1** | ≥ 59.00% | 49.30%   | ⚠️ Fail       |
+### 리포트 목표 (Stage 1)
+
+| Metric | Target | Actual | Status |
+|--------|--------|--------|--------|
+| **Dev F1** | ≥ 60.00% | 45.85% | ⚠️ Fail |
+| **Test F1** | ≥ 59.00% | 49.30% | ⚠️ Fail |
+
+#### Bug Fix (Loss Function)
+
+```
+fix: BCEWithWeightLoss bug fix
+
++ add: self.num_relations = num_relations in __init__
++ fix: pass pos_weight to BCEWithLogitsLoss
+
+# issue details
++ missing attribute -> possible AttributeError in forward
++ pos_weight not applied due to missing argument
+```
+
 
 ---
 ## 6. Stage 2 — ATLOP + DREEAM
