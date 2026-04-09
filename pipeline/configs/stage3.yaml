@@ -47,36 +47,31 @@ evidence:
 # ── Graph Encoder (GAIN-lite) ──
 graph_encoder:
   enabled: true
-  architecture: "gain"          # gain | unet
-  gnn_type: "gcn"               # gcn | gat
-  num_layers: 1                 # 1-layer로 시작 (oversmoothing 방지)
+  architecture: "gain"
+  gnn_type: "gcn"
+  num_layers: 2
   hidden_dim: 768
   dropout: 0.1
-  cross_sent_window: 1
-  residual_alpha: 0.2           # graph 영향을 약하게 (0.2 = 20%만)
+  cross_sent_window: 2
+  residual_alpha: 0.1
 
 training:
-  pretrain_epochs: 0            # Stage 3에서는 distant pre-train 안 함
-  finetune_epochs: 30
+  pretrain_epochs: 0
+  finetune_epochs: 20
   finetune_batch_size: 4
   finetune_gradient_accumulation: 4
 
-  # ⚠ [핵심 수정] Encoder LR을 극도로 낮추거나 0으로
-  # Stage 2에서 최적화된 BERT 가중치를 보존하기 위해
-  # GNN만 학습하고 BERT는 거의 안 건드림
-  encoder_lr: 1.0e-6            # 거의 freeze (기존 2e-5의 1/20)
-  classifier_lr: 5.0e-5         # classifier도 조금 낮춤
-  gnn_lr: 1.0e-4                # GNN만 적극적으로 학습
+  encoder_lr: 0.0
+  classifier_lr: 5.0e-5
+  gnn_lr: 1.0e-4
 
   weight_decay: 0.01
   warmup_ratio: 0.06
   max_grad_norm: 1.0
-  early_stopping_patience: 10
+  early_stopping_patience: 4
 
   loss_type: "atlop"
   no_relation_weight: 0.1
-
-  # Stage 2 best model에서 이어서 학습
   load_checkpoint: "checkpoints/stage2/finetune/best_model.pt"
 
 evaluation:
