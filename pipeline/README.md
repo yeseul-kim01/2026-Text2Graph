@@ -868,6 +868,15 @@ training:
   load_checkpoint: "checkpoints/stage2/best_model.pt"   # Stage 2 전이 학습
 ```
 
+## 1차 학습 결과
+
+Best Model
+F1 score: 58.76%, Precison = 65.65%, Recall = 53.19%
+
+![alt text](image.png)
+
+> 개선점: Heterogeneous Graph 미구현
+
 ---
 
 ## 8. Stage 4 — Graph U-Net
