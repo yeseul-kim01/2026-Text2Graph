@@ -159,6 +159,55 @@ class GATLayer(nn.Module):
         out = out.transpose(0, 1).contiguous().view(n, -1)
         return out
 
+def build_entity_graph(
+    entity_spans: List[List[Tuple[int, int]]],
+    sent_map: List[int],
+    num_entities: int,
+    num_sents: int,
+    cross_sent_window: int = 1,
+) -> torch.Tensor:
+    """
+    structural_encorder.py 호환용 entity-only graph builder.
+    기존 코드와의 하위 호환을 위해 유지.
+    """
+    device = "cpu"
+    if num_entities == 0:
+        return torch.zeros(0, 0)
+
+    adj = torch.zeros(num_entities, num_entities)
+
+    entity_sents: List[set] = []
+    for spans in entity_spans:
+        sents = set()
+        for start, end in spans:
+            for pos in range(start, min(end, len(sent_map))):
+                sid = sent_map[pos]
+                if 0 <= sid < num_sents:
+                    sents.add(sid)
+        entity_sents.append(sents)
+
+    for i in range(num_entities):
+        adj[i, i] = 1.0
+        for j in range(i + 1, num_entities):
+            common = entity_sents[i] & entity_sents[j]
+            if len(common) > 0:
+                adj[i, j] = 1.0
+                adj[j, i] = 1.0
+                continue
+
+            linked = False
+            for si in entity_sents[i]:
+                for sj in entity_sents[j]:
+                    if abs(si - sj) <= cross_sent_window:
+                        adj[i, j] = 1.0
+                        adj[j, i] = 1.0
+                        linked = True
+                        break
+                if linked:
+                    break
+
+    adj = _symmetric_normalize(adj)
+    return adj
 
 # ============================================================
 # Heterogeneous Graph Builder
