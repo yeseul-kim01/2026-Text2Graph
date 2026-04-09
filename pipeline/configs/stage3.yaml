@@ -52,7 +52,7 @@ graph_encoder:
   num_layers: 2
   hidden_dim: 768
   dropout: 0.1
-  cross_sent_window: 2
+  cross_sent_window: 1
   residual_alpha: 0.1
 
 training:
