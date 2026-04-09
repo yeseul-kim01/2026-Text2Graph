@@ -631,6 +631,39 @@ training:
 
 ---
 
+#### Stage 1 중간 평가 결과 (Epoch 15)
+
+| Split   | Precision | Recall  | F1      | Ign F1  |
+|---------|----------|---------|---------|---------|
+| **Dev**  | 56.39%   | 38.63%  | 45.85%  | 44.19%  |
+| **Test** | 56.76%   | 43.57%  | 49.30%  | 47.17%  |
+
+---
+
+#### 리포트 목표 (Stage 1)
+
+| Metric      | Target   | Actual   | Status        |
+|-------------|----------|----------|---------------|
+| **Dev F1**  | ≥ 60.00% | 45.85%   | ⚠️ Fail       |
+| **Test F1** | ≥ 59.00% | 49.30%   | ⚠️ Fail       |
+
+---
+
+#### Bug Fix (Loss Function)
+
+```
+fix: BCEWithWeightLoss bug fix
+
++ add: self.num_relations = num_relations in __init__
++ fix: pass pos_weight to BCEWithLogitsLoss
+
+# issue details
++ missing attribute -> possible AttributeError in forward
++ pos_weight not applied due to missing argument
+```
+
+---
+
 ## 6. Stage 2 — ATLOP + DREEAM
 
 ### 개요
