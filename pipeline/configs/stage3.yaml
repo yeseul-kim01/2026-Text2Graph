@@ -45,16 +45,18 @@ evidence:
 graph_encoder:
   enabled: true                         # ← Stage 3에서 활성화
   gnn_type: "gcn"                       # gcn | gat
-  num_layers: 2
+  num_layers: 1
   hidden_dim: 768                       # encoder hidden_size와 동일
   dropout: 0.1
   activation: "relu"
+  cross_sent_window: 1
+  residual_alpha: 0.3
   # Edge types (GAIN 논문 참고)
   edge_types:
     - "coref"                           # Co-reference: 동일 entity mention 간
     - "cooccur"                         # Co-occurrence: 같은 문장 내 mention 간
     - "cross_sent"                      # Cross-sentence: 인접 문장 entity 간
-  cross_sent_window: 1                  # 인접 문장 window 크기
+
 
 training:
   pretrain_epochs: 30
