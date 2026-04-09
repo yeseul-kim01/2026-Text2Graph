@@ -4,9 +4,14 @@
 # 변경점: entity_repr.pooling, relation_head, evidence 설정
 # 사용법: python scripts/train.py --config configs/stage2.yaml
 # ============================================================
-
+# ============================================================
+# Stage 2 Configuration: ATLOP + DREEAM 강화
+# 역할: LogSumExp Pooling + Adaptive Threshold + Evidence Head
+# 변경점: entity_repr.pooling, relation_head, evidence 설정
+# 사용법: python scripts/train.py --config configs/stage2.yaml
+# ============================================================
 experiment:
-  name: "stage2_atlop_dreeam"
+  name: "stage2_atlop_dreeam_resume_from_pretrain"
   stage: "stage2"
   seed: 42
   device: "cuda:0"
@@ -28,34 +33,30 @@ encoder:
   hidden_size: 768
   use_entity_marker: false
 
-# ── [변경] LogSumExp Pooling ──
 entity_repr:
-  pooling: "logsumexp"                  # ← Stage 1의 mean에서 변경
+  pooling: "logsumexp"
 
-# ── [변경] ATLOP + DREEAM ──
 relation_head:
-  classifier_type: "atlop"              # ← bilinear에서 변경
-  threshold_type: "adaptive"            # ← fixed에서 변경
-  use_evidence_head: true               # ← DREEAM evidence head 활성화
+  classifier_type: "atlop"
+  threshold_type: "adaptive"
+  use_evidence_head: true
 
-# ── DREEAM Evidence 설정 ──
 evidence:
   enabled: true
-  lambda_evidence: 0.1                  # evidence loss 가중치 (BERT-base)
-  teacher_signal_dir: "checkpoints/stage2/teacher"  # teacher attention 저장 경로
+  lambda_evidence: 0.1
+  teacher_signal_dir: "checkpoints/stage2/teacher"
 
-# ── Graph Encoder (미사용) ──
 graph_encoder:
   enabled: false
 
 training:
-  # DREEAM Teacher 학습 (Step 1)
   teacher_epochs: 30
-  # Silver evidence 추론 (Step 2) — infer_evidence.py에서 실행
-  # Student Self-training (Step 3)
-  pretrain_epochs: 30
+
+  # 이미 저장된 pretrain best를 사용할 거라 pretrain은 끔
+  pretrain_epochs: 0
   pretrain_batch_size: 4
   pretrain_gradient_accumulation: 1
+
   finetune_epochs: 30
   finetune_batch_size: 4
   finetune_gradient_accumulation: 1
@@ -66,14 +67,17 @@ training:
   warmup_ratio: 0.06
   max_grad_norm: 1.0
 
-  loss_type: "atlop"                    # ← bce에서 변경
+  loss_type: "atlop"
   no_relation_weight: 0.1
+
+  # 저장된 pretrain best에서 시작
+  load_checkpoint: "checkpoints/stage2/pretrain/best_model.pt"
 
 evaluation:
   eval_during_training: true
   eval_steps: 500
   metric: "micro_f1"
-  compute_evidence_f1: true             # ← Evidence F1 측정 활성화
+  compute_evidence_f1: true
 
 output:
   save_dir: "checkpoints/stage2"

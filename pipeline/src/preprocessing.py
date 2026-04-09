@@ -40,6 +40,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer
+from tqdm import tqdm
 
 
 # ──────────────────────────────────────────────────────────────
@@ -138,7 +139,7 @@ class DocREDDataset(Dataset):
 
         # ── 전처리된 features 생성 ──
         self.features = []
-        for doc_idx, doc in enumerate(self.raw_data):
+        for doc_idx, doc in enumerate(tqdm(self.raw_data, desc="Preprocessing")):
             feature = self._process_document(doc, doc_idx)
             if feature is not None:
                 self.features.append(feature)

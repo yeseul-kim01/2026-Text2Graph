@@ -33,3 +33,5 @@ py2neo>=2021.2.3
 
 # Utilities
 opt-einsum>=3.3.0
+
+python-dotenv

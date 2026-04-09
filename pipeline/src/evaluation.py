@@ -23,49 +23,51 @@ TODO ( 수정 포인트):
 ============================================================
 """
 
-import numpy as np
 from typing import Dict, List, Tuple, Set
 
 
+def _safe_div(a, b):
+    return a / b if b > 0 else 0.0
+
+
+def _f1(p, r):
+    return 2 * p * r / (p + r) if (p + r) > 0 else 0.0
+
+
+# -------------------------------------------------------------
+# Micro / Ign F1 (DocRED 공식 방식)
+# -------------------------------------------------------------
 def compute_micro_f1(
     predictions: List[Dict],
     gold_labels: List[Dict],
-    ignore_train_triples: Set[Tuple] = None,
+    train_facts: Set[Tuple] = None,
 ) -> Dict[str, float]:
-    """
-    Micro Precision, Recall, F1 계산.
 
-    INPUT:
-      predictions : [{'h': int, 't': int, 'r': str, 'score': float}, ...]
-      gold_labels : [{'h': int, 't': int, 'r': str}, ...]
-      ignore_train_triples : Ign F1 계산용 (훈련셋에도 있는 triple)
-
-    OUTPUT:
-      Dict with 'precision', 'recall', 'f1', 'ign_f1'
-    """
-    pred_set = set()
-    for p in predictions:
-        pred_set.add((p["h"], p["t"], p["r"]))
-
-    gold_set = set()
-    for g in gold_labels:
-        gold_set.add((g["h"], g["t"], g["r"]))
+    pred_set = set((p["title"], p["h"], p["t"], p["r"]) for p in predictions)
+    gold_set = set((g["title"], g["h"], g["t"], g["r"]) for g in gold_labels)
 
     # Micro F1
     tp = len(pred_set & gold_set)
-    precision = tp / max(len(pred_set), 1)
-    recall = tp / max(len(gold_set), 1)
-    f1 = 2 * precision * recall / max(precision + recall, 1e-8)
+    precision = _safe_div(tp, len(pred_set))
+    recall = _safe_div(tp, len(gold_set))
+    f1 = _f1(precision, recall)
 
-    # Ign F1 (공유 triple 제외)
+    # Ign F1 (DocRED 방식)
     ign_f1 = f1
-    if ignore_train_triples is not None:
-        ign_gold = gold_set - ignore_train_triples
-        ign_pred = pred_set - ignore_train_triples
-        ign_tp = len(ign_pred & ign_gold)
-        ign_p = ign_tp / max(len(ign_pred), 1)
-        ign_r = ign_tp / max(len(ign_gold), 1)
-        ign_f1 = 2 * ign_p * ign_r / max(ign_p + ign_r, 1e-8)
+    if train_facts is not None:
+
+        # gold만 filtering
+        ign_gold = set(
+            (t, h, ta, r)
+            for (t, h, ta, r) in gold_set
+            if (h, ta, r) not in train_facts
+        )
+
+        ign_tp = len(pred_set & ign_gold)
+
+        ign_precision = _safe_div(ign_tp, len(pred_set))
+        ign_recall = _safe_div(ign_tp, len(ign_gold))
+        ign_f1 = _f1(ign_precision, ign_recall)
 
     return {
         "precision": precision,
@@ -75,47 +77,99 @@ def compute_micro_f1(
     }
 
 
+# -------------------------------------------------------------
+# Evidence F1 (DREEAM 방식)
+# -------------------------------------------------------------
+def compute_evidence_f1(
+    predictions: List[Dict],
+    gold_labels: List[Dict],
+) -> Dict[str, float]:
+
+    pred_set = set()
+    gold_set = set()
+
+    for p in predictions:
+        for e in p.get("evidence", []):
+            pred_set.add((p["title"], p["h"], p["t"], p["r"], e))
+
+    for g in gold_labels:
+        for e in g.get("evidence", []):
+            gold_set.add((g["title"], g["h"], g["t"], g["r"], e))
+
+    tp = len(pred_set & gold_set)
+    precision = _safe_div(tp, len(pred_set))
+    recall = _safe_div(tp, len(gold_set))
+    f1 = _f1(precision, recall)
+
+    return {
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+    }
+
+
+# -------------------------------------------------------------
+# Intra / Inter F1
+# -------------------------------------------------------------
+def compute_inter_intra_f1(
+    predictions: List[Dict],
+    gold_labels: List[Dict],
+    sent_info: Dict,
+):
+
+    pred_intra, pred_inter = set(), set()
+    gold_intra, gold_inter = set(), set()
+
+    for g in gold_labels:
+        key = (g["title"], g["h"], g["t"], g["r"])
+
+        if sent_info[g["title"]][g["h"]] & sent_info[g["title"]][g["t"]]:
+            gold_intra.add(key)
+        else:
+            gold_inter.add(key)
+
+    for p in predictions:
+        key = (p["title"], p["h"], p["t"], p["r"])
+
+        if sent_info[p["title"]][p["h"]] & sent_info[p["title"]][p["t"]]:
+            pred_intra.add(key)
+        else:
+            pred_inter.add(key)
+
+    # intra
+    intra_tp = len(pred_intra & gold_intra)
+    intra_p = _safe_div(intra_tp, len(pred_intra))
+    intra_r = _safe_div(intra_tp, len(gold_intra))
+    intra_f1 = _f1(intra_p, intra_r)
+
+    # inter
+    inter_tp = len(pred_inter & gold_inter)
+    inter_p = _safe_div(inter_tp, len(pred_inter))
+    inter_r = _safe_div(inter_tp, len(gold_inter))
+    inter_f1 = _f1(inter_p, inter_r)
+
+    return {
+        "intra_f1": intra_f1,
+        "inter_f1": inter_f1,
+    }
+
+
+# -------------------------------------------------------------
+# 전체 평가
+# -------------------------------------------------------------
 def evaluate_re(
     all_predictions: List[List[Dict]],
     all_gold_labels: List[List[Dict]],
+    train_facts: Set[Tuple] = None,
 ) -> Dict[str, float]:
-    """
-    전체 데이터셋에 대한 RE 평가.
 
-    INPUT:
-      all_predictions : 문서별 예측 리스트
-      all_gold_labels : 문서별 정답 리스트
-    OUTPUT:
-      Dict with 'f1', 'ign_f1', 'precision', 'recall'
-    """
-    flat_preds = [p for doc in all_predictions for p in doc]
-    flat_golds = [g for doc in all_gold_labels for g in doc]
-    return compute_micro_f1(flat_preds, flat_golds)
+    flat_preds = []
+    flat_golds = []
 
+    for doc_preds in all_predictions:
+        flat_preds.extend(doc_preds)
 
-def evaluate_evidence(
-    pred_evidence: List[Dict],
-    gold_evidence: List[Dict],
-) -> Dict[str, float]:
-    """
-    Evidence F1 계산 (DREEAM).
+    for doc_golds in all_gold_labels:
+        flat_golds.extend(doc_golds)
 
-    INPUT:
-      pred_evidence : [{pair_key: [sent_ids]}, ...]
-      gold_evidence : [{pair_key: [sent_ids]}, ...]
-    OUTPUT:
-      Dict with 'evidence_f1'
-    """
-    tp, fp, fn = 0, 0, 0
-    for pred, gold in zip(pred_evidence, gold_evidence):
-        for key in set(list(pred.keys()) + list(gold.keys())):
-            p_sents = set(pred.get(key, []))
-            g_sents = set(gold.get(key, []))
-            tp += len(p_sents & g_sents)
-            fp += len(p_sents - g_sents)
-            fn += len(g_sents - p_sents)
-
-    precision = tp / max(tp + fp, 1)
-    recall = tp / max(tp + fn, 1)
-    f1 = 2 * precision * recall / max(precision + recall, 1e-8)
-    return {"evidence_f1": f1}
+    return compute_micro_f1(flat_preds, flat_golds, train_facts)

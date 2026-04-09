@@ -174,6 +174,7 @@ def build_entity_graph(
     """
     device = "cpu"
     if num_entities == 0:
+
         return torch.zeros(0, 0, device=device, dtype=dtype)
 
     adj = torch.zeros(num_entities, num_entities, device=device, dtype=dtype)

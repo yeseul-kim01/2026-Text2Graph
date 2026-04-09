@@ -20,12 +20,12 @@ Document-level Relation Extraction & Knowledge Graph System
 
 from .model import DocREModel
 from .preprocessing import DocREDDataset, docred_collate_fn
-from .evaluation import evaluate_re, evaluate_evidence
+from .evaluation import evaluate_re , compute_evidence_f1
 
 __all__ = [
     "DocREModel",
     "DocREDDataset",
     "docred_collate_fn",
     "evaluate_re",
-    "evaluate_evidence",
+    "compute_evidence_f1",
 ]
