@@ -800,3 +800,6 @@ CUDA를 사용할 수 없는 환경에서는 자동으로 CPU로 fallback 처리
 [김예슬]
 - stage 2(v1,2) https://huggingface.co/yeseul0-0/docred-stage2-atlop-fine-tuning-v2
 - stage 3(v1,3,4,5,6) https://huggingface.co/yeseul0-0/docred-stage3-atlop-fine-tuning-v6
+
+[박재윤]
+- stage 2(v1,2) https://huggingface.co/park990/hihi_model/tree/main
