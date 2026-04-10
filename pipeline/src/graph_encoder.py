@@ -367,7 +367,7 @@ class GraphEncoder(nn.Module):
     def __init__(
         self,
         hidden_dim: int = 768,
-        num_layers: int = 2,
+        num_layers: int = 1,
         gnn_type: str = "gcn",
         dropout: float = 0.1,
         cross_sent_window: int = 1,
@@ -409,12 +409,22 @@ class GraphEncoder(nn.Module):
         # graph output gate:
         # graph update가 너무 강하면 Stage 2보다 성능이 떨어지므로
         # 학습 가능한 gate를 둔다.
-        self.update_gate = nn.Sequential(
+        # self.update_gate = nn.Sequential(
+        #     nn.Linear(hidden_dim * 2, hidden_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_dim, hidden_dim),
+        #     nn.Sigmoid(),
+        # )
+        # original entity와 graph-refined entity를 concat한 뒤
+        # projection하여 graph를 독립 feature source처럼 활용한다.
+        # [수정 V5부터] gate 대신 concat + projection으로 변경 (gate가 너무 강하게 학습되는 문제 완화)
+        self.fusion_mlp = nn.Sequential(
             nn.Linear(hidden_dim * 2, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.Sigmoid(),
         )
+        self.output_norm = nn.LayerNorm(hidden_dim)
 
     def forward(
         self,
@@ -457,10 +467,35 @@ class GraphEncoder(nn.Module):
 
         refined_entity = h[:num_entities]  # entity node만 사용
 
+# ==== V1: gate fusion (문제가 너무 강하게 학습되는 경향) ====
+        # V1 버전에서는 gate 없이 단순 residual로 fusion
         # final gated fusion:
         # Stage 2 entity를 최대한 보존하면서 graph 정보만 선택적으로 섞음
-        gate_input = torch.cat([original_entity, refined_entity], dim=-1)
-        gate = self.update_gate(gate_input)
-        out = gate * refined_entity + (1.0 - gate) * original_entity
+        # gate_input = torch.cat([original_entity, refined_entity], dim=-1)
+        # gate = self.update_gate(gate_input)
+        # out = gate * refined_entity + (1.0 - gate) * original_entity
+        # return out
+# ====================================================
+
+        
+        # [수정 V5부터] gate 대신 concat + projection으로 변경 (gate가 너무 강하게 학습되는 문제 완화)
+        # final concat fusion:
+        #original + refined를 concat 후 projection
+        fusion_input = torch.cat([original_entity, refined_entity], dim=-1)
+        # out = self.fusion_mlp(fusion_input)
+
+        # # 원본 semantic 보존을 위해 residual + layer norm
+        # out = self.output_norm(out + original_entity)
+
+        # return out
+        
+# ===========================================================
+
+# == V6 ==
+        out = self.fusion_mlp(fusion_input)
+
+        # graph 영향이 너무 강해 precision이 떨어지는 문제를 줄이기 위해
+        # original entity를 더 강하게 보존
+        out = self.output_norm(0.5 * out + original_entity)
 
         return out
