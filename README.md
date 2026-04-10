@@ -296,7 +296,9 @@ training:
 | **Micro F1** | 모든 relation triple을 동등하게 취급한 F1 |
 | **Ign F1** | 학습/테스트 셋 공통 triple 제외 F1 (DocRED 표준 지표) |
 
-### Stage 1 중간 평가 결과 (Epoch 15)
+### Stage 1 1차 평가 결과 (Epoch 15)
+
+![alt text](Stage01_F1.png)
 
 | Split | Precision | Recall | F1 | Ign F1 |
 |-------|-----------|--------|----|--------|
