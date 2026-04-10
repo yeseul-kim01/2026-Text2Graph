@@ -154,6 +154,7 @@ pipeline/
 ---
 
 ## 4. 전체 파이프라인 흐름
+<img width="4032" height="3699" alt="image" src="https://github.com/user-attachments/assets/af47a16f-0b24-424f-9d22-e4482a0b3559" />
 
 ```
 [DocRED JSON]
