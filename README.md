@@ -803,3 +803,6 @@ CUDA를 사용할 수 없는 환경에서는 자동으로 CPU로 fallback 처리
 
 [박재윤]
 - stage 2(v1,2) https://huggingface.co/park990/hihi_model/tree/main
+
+[박정현]
+- stage 4 (1차실험) https://huggingface.co/jeongdell/Docred-stage3-gain
