@@ -1,10 +1,13 @@
 # ============================================================
 # Stage 3 Configuration: Stage 2 + Graph Reasoning (GAIN-lite)
-# Version: v6 (Imbalance + Threshold tuning)
+# ============================================================
+# 핵심 변경: Stage 2 체크포인트에서 이어서 학습
+# ⚠ Stage 3의 가장 큰 실패 원인: encoder가 GNN noise에 의해 망가지는 것
+# 해결: encoder를 freeze하거나 매우 낮은 lr을 사용
 # ============================================================
 
 experiment:
-  name: "stage3_gain_lite_v6"
+  name: "stage3_gain_lite"
   stage: "stage3"
   seed: 42
   device: "cuda"
@@ -33,7 +36,7 @@ entity_repr:
 relation_head:
   classifier_type: "atlop"
   threshold_type: "adaptive"
-  fixed_threshold: 0.4        # [변경점]
+  fixed_threshold: 0.3
   use_evidence_head: true
 
 evidence:
@@ -45,13 +48,12 @@ evidence:
 graph_encoder:
   enabled: true
   architecture: "gain"
-  gnn_type: "gat"
+  gnn_type: "gcn"
   num_layers: 1
   hidden_dim: 768
   dropout: 0.1
   cross_sent_window: 1
-  residual_alpha: 0.05
-  num_heads: 4
+  residual_alpha: 0.1
 
 training:
   pretrain_epochs: 0
@@ -59,7 +61,7 @@ training:
   finetune_batch_size: 4
   finetune_gradient_accumulation: 4
 
-  encoder_lr: 5.0e-7
+  encoder_lr: 0.0
   classifier_lr: 5.0e-5
   gnn_lr: 1.0e-4
 
@@ -69,7 +71,7 @@ training:
   early_stopping_patience: 4
 
   loss_type: "atlop"
-  no_relation_weight: 0.2      
+  no_relation_weight: 0.1
   load_checkpoint: "checkpoints/stage2/finetune/best_model.pt"
 
 evaluation:
@@ -79,6 +81,6 @@ evaluation:
   compute_evidence_f1: true
 
 output:
-  save_dir: "checkpoints/stage3_v6"  
-  log_dir: "logs/stage3_v6"           
+  save_dir: "checkpoints/stage3"
+  log_dir: "logs/stage3"
   save_best_only: true
