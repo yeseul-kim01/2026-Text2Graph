@@ -4,29 +4,16 @@ Knowledge Graph Layer (kg_builder.py)
 ============================================================
 역할: 후처리된 triple을 Neo4j 그래프 DB에 저장
 
-INPUT:
-  - triples: List of {head_name, tail_name, r, score, evidence}
-  - entities: List of {name, type, aliases}
-
-OUTPUT:
-  - Neo4j 그래프 (nodes + edges)
+변경사항:
+  - Edge에 stage 속성 저장
+  - relation merge key를 (head, tail, relation, stage)로 분리
 ============================================================
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 
 
 class KnowledgeGraphBuilder:
-    """
-    Neo4j 기반 Knowledge Graph 구축기.
-
-    Args:
-        uri      : Neo4j URI (e.g., 'bolt://localhost:7687', 'neo4j+s://xxxx.databases.neo4j.io')
-        user     : Neo4j 사용자명
-        password : Neo4j 비밀번호
-        database : Neo4j database name (Aura는 보통 'neo4j')
-    """
-
     def __init__(
         self,
         uri: str,
@@ -41,7 +28,6 @@ class KnowledgeGraphBuilder:
         self.driver = None
 
     def connect(self):
-        """Neo4j 연결"""
         try:
             from neo4j import GraphDatabase
             self.driver = GraphDatabase.driver(
@@ -56,15 +42,11 @@ class KnowledgeGraphBuilder:
             raise RuntimeError(f"[KG] Connection failed: {e}")
 
     def close(self):
-        """Neo4j 연결 종료"""
         if self.driver:
             self.driver.close()
             print("[KG] Connection closed")
 
     def setup_constraints(self):
-        """
-        Entity name 유니크 제약 생성
-        """
         if not self.driver:
             raise RuntimeError("[KG] Not connected. Call connect() first.")
 
@@ -81,21 +63,11 @@ class KnowledgeGraphBuilder:
 
     @staticmethod
     def normalize_entity_name(name: str) -> str:
-        """
-        Entity canonical name 최소 정규화
-        - 앞뒤 공백 제거
-        - 중복 공백 제거
-        """
         if not name:
             return ""
         return " ".join(str(name).strip().split())
 
     def create_nodes_batch(self, entities: List[Dict[str, Any]], batch_size: int = 1000):
-        """
-        Entity를 batch로 Node 생성
-        INPUT:
-          [{'name': str, 'type': str, 'aliases': List[str]}, ...]
-        """
         if not self.driver:
             raise RuntimeError("[KG] Not connected. Call connect() first.")
 
@@ -106,7 +78,6 @@ class KnowledgeGraphBuilder:
             name = self.normalize_entity_name(ent.get("name", ""))
             if not name:
                 continue
-
             if name in seen:
                 continue
             seen.add(name)
@@ -131,12 +102,7 @@ class KnowledgeGraphBuilder:
 
         print(f"[KG] Inserted/Merged nodes: {len(cleaned_entities)}")
 
-    def create_edges_batch(self, triples: List[Dict[str, Any]], batch_size: int = 1000):
-        """
-        Relation triple을 batch로 Edge 생성
-        INPUT:
-          [{'head_name': str, 'tail_name': str, 'r': str, 'score': float, 'evidence': ...}, ...]
-        """
+    def create_edges_batch(self, triples: List[Dict[str, Any]], stage: str, batch_size: int = 1000):
         if not self.driver:
             raise RuntimeError("[KG] Not connected. Call connect() first.")
 
@@ -147,11 +113,12 @@ class KnowledgeGraphBuilder:
             head = self.normalize_entity_name(t.get("head_name", ""))
             tail = self.normalize_entity_name(t.get("tail_name", ""))
             rel = str(t.get("r", "")).strip()
+            stage_value = str(stage).strip()
 
-            if not head or not tail or not rel:
+            if not head or not tail or not rel or not stage_value:
                 continue
 
-            key = (head, tail, rel)
+            key = (head, tail, rel, stage_value)
             if key in seen:
                 continue
             seen.add(key)
@@ -160,6 +127,7 @@ class KnowledgeGraphBuilder:
                 "head": head,
                 "tail": tail,
                 "rel": rel,
+                "stage": stage_value,
                 "score": float(t.get("score", 0.0)),
                 "evidence": t.get("evidence", []),
             })
@@ -168,7 +136,7 @@ class KnowledgeGraphBuilder:
         UNWIND $rows AS row
         MATCH (h:Entity {name: row.head})
         MATCH (t:Entity {name: row.tail})
-        MERGE (h)-[r:REL {relation: row.rel}]->(t)
+        MERGE (h)-[r:REL {relation: row.rel, stage: row.stage}]->(t)
         SET r.score = row.score,
             r.evidence = row.evidence
         """
@@ -178,18 +146,9 @@ class KnowledgeGraphBuilder:
                 batch = cleaned_triples[i:i + batch_size]
                 session.run(query, rows=batch)
 
-        print(f"[KG] Inserted/Merged edges: {len(cleaned_triples)}")
+        print(f"[KG] Inserted/Merged edges: {len(cleaned_triples)} (stage={stage})")
 
-    def multi_hop_query(self, entity_name: str, max_hops: int = 3, limit: int = 20) -> List[Dict[str, Any]]:
-        """
-        Multi-hop 경로 탐색.
-        INPUT:
-          - entity_name: 시작 entity명
-          - max_hops: 최대 hop 수
-          - limit: 반환 경로 수 제한
-        OUTPUT:
-          - 경로 정보 리스트
-        """
+    def multi_hop_query(self, entity_name: str, max_hops: int = 3, limit: int = 20):
         if not self.driver:
             raise RuntimeError("[KG] Not connected. Call connect() first.")
 
@@ -206,7 +165,6 @@ class KnowledgeGraphBuilder:
         with self.driver.session(database=self.database) as session:
             records = session.run(query, name=entity_name, limit=limit)
             for record in records:
-                path = record["p"]
-                results.append(path)
+                results.append(record["p"])
 
         return results

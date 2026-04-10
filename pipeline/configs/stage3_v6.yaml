@@ -1,12 +1,11 @@
 # ============================================================
-# Stage 4 Configuration: Stage 2 + U-Net Graph Reasoning
-# ============================================================
-# Stage 3과 동일한 원칙: Stage 2 BERT를 보존하면서 U-Net만 학습
+# Stage 3 Configuration: Stage 2 + Graph Reasoning (GAIN-lite)
+# Version: v6 (Imbalance + Threshold tuning)
 # ============================================================
 
 experiment:
-  name: "stage4_unet"
-  stage: "stage4"
+  name: "stage3_gain_lite_v6"
+  stage: "stage3"
   seed: 42
   device: "cuda"
 
@@ -34,43 +33,43 @@ entity_repr:
 relation_head:
   classifier_type: "atlop"
   threshold_type: "adaptive"
-  fixed_threshold: 0.3
+  fixed_threshold: 0.4        # [변경점]
   use_evidence_head: true
 
 evidence:
   enabled: true
   lambda_evidence: 0.1
+  teacher_signal_dir: "checkpoints/stage3/teacher"
 
-# ── Graph Encoder (U-Net) ──
+# ── Graph Encoder (GAIN-lite) ──
 graph_encoder:
   enabled: true
-  architecture: "unet"             # ← U-Net 방식
-  gnn_type: "gcn"
-  num_layers: 2
+  architecture: "gain"
+  gnn_type: "gat"
+  num_layers: 1
   hidden_dim: 768
   dropout: 0.1
   cross_sent_window: 1
-  pool_ratio: 0.5                  # U-Net 전용: 노드 압축 비율
+  residual_alpha: 0.05
+  num_heads: 4
 
 training:
   pretrain_epochs: 0
-  finetune_epochs: 30
+  finetune_epochs: 20
   finetune_batch_size: 4
   finetune_gradient_accumulation: 4
 
-  # ⚠ Stage 2 BERT 보존
-  encoder_lr: 1.0e-6               # 거의 freeze
+  encoder_lr: 5.0e-7
   classifier_lr: 5.0e-5
-  gnn_lr: 1.0e-4                   # U-Net만 적극 학습
+  gnn_lr: 1.0e-4
 
   weight_decay: 0.01
   warmup_ratio: 0.06
   max_grad_norm: 1.0
-  early_stopping_patience: 10
+  early_stopping_patience: 4
 
   loss_type: "atlop"
-  no_relation_weight: 0.1
-
+  no_relation_weight: 0.2      # [변경점]
   load_checkpoint: "checkpoints/stage2/finetune/best_model.pt"
 
 evaluation:
@@ -80,6 +79,6 @@ evaluation:
   compute_evidence_f1: true
 
 output:
-  save_dir: "checkpoints/stage4"
-  log_dir: "logs/stage4"
+  save_dir: "checkpoints/stage3_v6"   # [변경점]
+  log_dir: "logs/stage3_v6"           # [변경점]
   save_best_only: true

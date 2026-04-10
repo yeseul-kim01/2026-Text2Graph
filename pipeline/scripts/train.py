@@ -245,15 +245,37 @@ def create_optimizer_and_scheduler(model, config, num_train_steps):
     ATLOP 원본도 pre-train과 fine-tune에서 별도 optimizer 사용.
     """
     train_cfg = config["training"]
-    param_groups = [
-        {"params": model.get_encoder_params(),     "lr": train_cfg["encoder_lr"]},
-        {"params": model.get_non_encoder_params(), "lr": train_cfg["classifier_lr"]},
-    ]
-    optimizer = AdamW(param_groups, weight_decay=train_cfg.get("weight_decay", 0.0))
-    warmup_steps = int(num_train_steps * train_cfg.get("warmup_ratio", 0.06))
-    scheduler = get_linear_schedule_with_warmup(optimizer, warmup_steps, num_train_steps)
-    return optimizer, scheduler
 
+    param_groups = [
+        {
+            "params": model.get_encoder_params(),
+            "lr": train_cfg["encoder_lr"],
+        },
+        {
+            "params": model.get_classifier_params(),
+            "lr": train_cfg["classifier_lr"],
+        },
+        {
+            "params": model.get_gnn_params(),
+            "lr": train_cfg.get("gnn_lr", train_cfg["classifier_lr"]),
+        },
+    ]
+
+    # 빈 파라미터 그룹 제거
+    param_groups = [g for g in param_groups if len(g["params"]) > 0]
+
+    optimizer = AdamW(
+        param_groups,
+        weight_decay=train_cfg.get("weight_decay", 0.0)
+    )
+
+    warmup_steps = int(num_train_steps * train_cfg.get("warmup_ratio", 0.06))
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer,
+        warmup_steps,
+        num_train_steps
+    )
+    return optimizer, scheduler
 
 def run_phase(
     phase_name, model, train_loader, dev_loader, config, device,

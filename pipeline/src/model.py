@@ -330,10 +330,27 @@ class DocREModel(nn.Module):
         return all_outputs
 
     def get_encoder_params(self):
-        """optimizer에서 encoder 전용 lr를 따로 줄 때 사용"""
-        return self.encoder.parameters()
+        """encoder 전용 파라미터"""
+        return list(self.encoder.parameters())
 
-    def get_non_encoder_params(self):
-        """encoder를 제외한 나머지 파라미터 반환"""
+    def get_gnn_params(self):
+        """graph encoder 전용 파라미터"""
+        if self.graph_encoder is None:
+            return []
+        return list(self.graph_encoder.parameters())
+
+    def get_classifier_params(self):
+        """
+        encoder, graph_encoder를 제외한 나머지 파라미터
+        = entity_repr + relation_head 등
+        """
         encoder_param_ids = set(id(p) for p in self.encoder.parameters())
-        return [p for p in self.parameters() if id(p) not in encoder_param_ids]
+
+        gnn_param_ids = set()
+        if self.graph_encoder is not None:
+            gnn_param_ids = set(id(p) for p in self.graph_encoder.parameters())
+
+        return [
+            p for p in self.parameters()
+            if id(p) not in encoder_param_ids and id(p) not in gnn_param_ids
+        ]

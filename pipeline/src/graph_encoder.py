@@ -193,6 +193,7 @@ def build_entity_graph(
         adj[i, i] = 1.0
         for j in range(i + 1, num_entities):
             common = entity_sents[i] & entity_sents[j]
+            # [수정] : 같은 연결 조건 내에서도, 양쪽 entity가 모두 한 문장에만 등장하는 경우는 edge를 추가하지 않도록
             if len(common) > 0:
                 adj[i, j] = 1.0
                 adj[j, i] = 1.0
@@ -319,7 +320,7 @@ def build_heterogeneous_graph(
             linked = False
             for si in entity_sents[i]:
                 for sj in entity_sents[j]:
-                    if abs(si - sj) <= cross_sent_window:
+                    if abs(si - sj) <= cross_sent_window: # [수정] : cross_sent_window 기준으로 변경 
                         adj[i, j] = 1.0
                         adj[j, i] = 1.0
                         linked = True
@@ -328,12 +329,12 @@ def build_heterogeneous_graph(
                     break
 
     # entity-sentence
+    # [수정] 여러 sentence에 등장하는 entity만 sentence node와 연결
     for ent_id, sents in enumerate(entity_sents):
         for sid in sents:
             s_idx = sent_offset + sid
             adj[ent_id, s_idx] = 1.0
             adj[s_idx, ent_id] = 1.0
-
     # sentence-document
     for sid in range(num_sents):
         s_idx = sent_offset + sid
@@ -411,12 +412,22 @@ class GraphEncoder(nn.Module):
         # graph output gate:
         # graph update가 너무 강하면 Stage 2보다 성능이 떨어지므로
         # 학습 가능한 gate를 둔다.
-        self.update_gate = nn.Sequential(
+        # self.update_gate = nn.Sequential(
+        #     nn.Linear(hidden_dim * 2, hidden_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_dim, hidden_dim),
+        #     nn.Sigmoid(),
+        # )
+        # original entity와 graph-refined entity를 concat한 뒤
+        # projection하여 graph를 독립 feature source처럼 활용한다.
+        # [수정 V5부터] gate 대신 concat + projection으로 변경 (gate가 너무 강하게 학습되는 문제 완화)
+        self.fusion_mlp = nn.Sequential(
             nn.Linear(hidden_dim * 2, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.Sigmoid(),
         )
+        self.output_norm = nn.LayerNorm(hidden_dim)
 
     def forward(
         self,
@@ -459,10 +470,35 @@ class GraphEncoder(nn.Module):
 
         refined_entity = h[:num_entities]  # entity node만 사용
 
+# ==== V1: gate fusion (문제가 너무 강하게 학습되는 경향) ====
+        # V1 버전에서는 gate 없이 단순 residual로 fusion
         # final gated fusion:
         # Stage 2 entity를 최대한 보존하면서 graph 정보만 선택적으로 섞음
-        gate_input = torch.cat([original_entity, refined_entity], dim=-1)
-        gate = self.update_gate(gate_input)
-        out = gate * refined_entity + (1.0 - gate) * original_entity
+        # gate_input = torch.cat([original_entity, refined_entity], dim=-1)
+        # gate = self.update_gate(gate_input)
+        # out = gate * refined_entity + (1.0 - gate) * original_entity
+        # return out
+# ====================================================
+
+        
+        # [수정 V5부터] gate 대신 concat + projection으로 변경 (gate가 너무 강하게 학습되는 문제 완화)
+        # final concat fusion:
+        #original + refined를 concat 후 projection
+        fusion_input = torch.cat([original_entity, refined_entity], dim=-1)
+        # out = self.fusion_mlp(fusion_input)
+
+        # # 원본 semantic 보존을 위해 residual + layer norm
+        # out = self.output_norm(out + original_entity)
+
+        # return out
+        
+# ===========================================================
+
+# == V6 ==
+        out = self.fusion_mlp(fusion_input)
+
+        # graph 영향이 너무 강해 precision이 떨어지는 문제를 줄이기 위해
+        # original entity를 더 강하게 보존
+        out = self.output_norm(0.5 * out + original_entity)
 
         return out
