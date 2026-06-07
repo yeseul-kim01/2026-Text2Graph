@@ -81,7 +81,7 @@ class GraphUnpool(nn.Module):
         device = x_pooled.device
         
         # 원래 노드 개수(orig_size)만큼 빈 텐서(0) 생성
-        x_unpooled = torch.zeros((orig_size, dim), device=device)
+        x_unpooled = torch.zeros((orig_size, dim), device=device, dtype=x_pooled.dtype)
         
         # 풀링에서 살아남았던 노드들의 위치(top_idx)에 Bottleneck 피처를 채워 넣음
         x_unpooled[top_idx] = x_pooled
@@ -137,9 +137,9 @@ class GraphUNetEncoder(nn.Module):
 
         # ── 그래프 구성 (기존 모듈 활용) ──
         adj = build_entity_graph(
-            entity_spans, sent_map, orig_size, num_sents, self.cross_sent_window
+            entity_spans, sent_map, orig_size, num_sents, self.cross_sent_window,
+            device=entity_vectors.device, dtype=entity_vectors.dtype
         ).to(entity_vectors.device)
-
         # ── Step 1: 인코딩 및 Skip Connection 저장 ──
         h_enc = self.enc_gnn(entity_vectors, adj)
         h_enc = self.activation(h_enc)
