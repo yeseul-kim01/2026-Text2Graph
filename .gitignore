@@ -1,18 +1,28 @@
-# DS STORE 제거 
+# OS / 에디터
 .DS_Store
-# DocRED large files
-pipeline/data/docred/train_distant.json
-pipeline/data/docred/train_distant.json.gz
 
-# DocRED large files
-pipeline/data/docred/train_distant.json
-pipeline/data/docred/train_distant.json.gz
+# Python 캐시
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
 
-# 네오포제이 세팅 값
+# 환경 변수 (Neo4j 등 비밀값)
 .env
 
-# huggingface 업로드 ipynb
+# DocRED 대용량 파일
+pipeline/data/docred/train_distant.json
+pipeline/data/docred/train_distant.json.gz
+
+# 모델 / 체크포인트
+pipeline/data/model/*
+checkpoints/
+*.pt
+
+# 아카이브 / 임시 파일
+*.zip
+
+# HuggingFace 업로드용 노트북
 pipeline/notebooks/yeseul_huggingFace.ipynb
 
-# model 파일 
-pipeline/data/model/*
+# 블로그 글 초안 (티스토리용, 레포 제외)
+blog/

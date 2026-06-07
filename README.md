@@ -6,20 +6,63 @@ BERT 인코더부터 KG 저장까지 4단계 Incremental Stacking 구조로 설�
 
 ---
 
+## 아키텍처 한눈에 보기
+
+### 전체 데이터 흐름
+
+문서(JSON)가 들어오면 레이어를 차례로 통과해 관계 삼중항(Triple)이 되고, 최종적으로 Neo4j 지식 그래프에 적재됩니다. 가운데 **Graph Encoder는 선택적 레이어**로, Stage 3·4에서만 활성화됩니다.
+
+```mermaid
+flowchart TD
+    IN["DocRED 문서 JSON"]
+    PRE["Layer 0 · Preprocessing<br/>토큰화 · 개체쌍 N×(N-1) · 라벨"]
+    ENC["Layer 1 · Document Encoder<br/>BERT, 마지막 3개 layer 평균"]
+    ER["Layer 2 · Entity Representation<br/>Mean(Stage1) / LogSumExp(Stage2~4)"]
+    G{"Layer 3 · Graph Encoder<br/>Stage 3·4에서만"}
+    G3["GAIN-lite GNN · Stage 3"]
+    G4["Graph U-Net · Stage 4"]
+    RH["Layer 4 · Relation Head<br/>Bilinear / ATLOP + Adaptive Threshold"]
+    POST["Postprocessing<br/>Triple 변환 · 임계값 · 중복 제거"]
+    KG[("Neo4j Knowledge Graph<br/>multi-hop 질의")]
+
+    IN --> PRE --> ENC --> ER --> G
+    G -->|"Stage 3"| G3 --> RH
+    G -->|"Stage 4"| G4 --> RH
+    G -->|"Stage 1·2 (skip)"| RH
+    RH --> POST --> KG
+```
+
+### 4단계 Incremental Stacking
+
+각 Stage는 이전 Stage의 체크포인트를 이어받아 한 겹씩 기능을 더합니다. Stage 3(GAIN-lite)과 Stage 4(Graph U-Net)는 **같은 Stage 2 체크포인트** 에서 출발해, 그래프 구조의 차이만 비교하는 Ablation 쌍입니다.
+
+```mermaid
+flowchart LR
+    S1["Stage 1 · Baseline<br/>BERT + MeanPool + BCE"]
+    S2["Stage 2 · ATLOP + DREEAM<br/>LogSumExp + Adaptive TH + Evidence"]
+    S3["Stage 3 · + GAIN-lite GNN<br/>flat message passing"]
+    S4["Stage 4 · + Graph U-Net<br/>계층적 TopK 풀링"]
+    S1 --> S2 --> S3
+    S2 --> S4
+    S3 -.->|"Ablation 비교"| S4
+```
+
+---
+
 ## 목차
 
 1. [프로젝트 개요](#1-프로젝트-개요)
 2. [디렉토리 구조](#2-디렉토리-구조)
 3. [데이터셋 DocRED](#3-데이터셋-docred)
-4. [전체 파이프라인 흐름](#4-전체-파이프라인-흐름)
-5. [Stage 1 — Baseline RE](#5-stage-1--baseline-re-상세)
+4. [전체 아키텍처](#4-전체-아키텍처)
+5. [Stage 1 — Baseline RE](#5-stage-1--baseline-re)
 6. [Stage 2 — ATLOP + DREEAM](#6-stage-2--atlop--dreeam)
 7. [Stage 3 — GAIN-lite GNN](#7-stage-3--gain-lite-gnn)
 8. [Stage 4 — Graph U-Net](#8-stage-4--graph-u-net)
 9. [Stage 간 비교](#9-stage-간-비교)
 10. [환경 설정 및 실행](#10-환경-설정-및-실행)
 11. [참고 논문](#11-참고-논문)
-12. [모델 huggingFace 주소](#12-모델-huggingFace-주소)
+12. [모델 huggingFace 주소](#12-모델-huggingface-주소)
 
 ---
 
@@ -51,13 +94,28 @@ Baseline          ATLOP             + GAIN-lite         + Graph U-Net
 
 ### 팀 담당 분배
 
-| 역할 | 이름 |
-|------|------|
-| 총괄 PM | `김예슬` |
-| Stage 1 담당 | `이수민` |
-| Stage 2 담당 | `박재윤` |
-| Stage 3 담당 | `김예슬` |
-| Stage 4 담당 | `박정현` |
+4단계로 나뉜 구조이지만, 실제 구현은 전처리(이수민)·Stage 4(박정현)·일부 손실 함수 수정(박재윤·박정현)을 제외한 대부분의 파이프라인을 PM이 작성했습니다.
+
+| 담당 | 맡은 부분 | 주요 파일 |
+|------|-----------|-----------|
+| **김예슬** (총괄 PM) | 베이스라인 골격, 통합 모델(인코더·개체 표현·관계 분류), **Stage 3 그래프 인코더(GAIN-lite)**, 손실 함수 설계, 학습 스크립트(기본 루프 + 2단계 학습), 평가·evidence 추론, KG 빌더, 도식화 | `model.py`, `encoder.py`, `entity_repr.py`, `relation_head.py`, `graph_encoder.py`, `losses.py`, `train.py`, `evaluate.py`, `infer_evidence.py`, `kg_builder.py`, `utils.py` |
+| 이수민 | 데이터 전처리, 손실 함수 BCE 버그 수정 | `preprocessing.py`, `losses.py`(일부) |
+| 박재윤 | ATLOP ranking loss 구현, 평가 단계 adaptive threshold 보강 | `losses.py`(일부), `train.py`(`evaluate_on_dev`) |
+| 박정현 | **Stage 4 Graph U-Net**, 손실 함수 device 오류 수정 | `structural_encorder.py`, `losses.py`(일부) |
+| 공동 | 후처리(triple 변환·필터링) | `postprocessing.py` |
+
+### 정량 평가 결과 (Stage 3)
+
+PM이 담당한 Stage 3(GAIN-lite 그래프 추론)의 **그래프 융합 방식**을 개선하며 측정한 DocRED Dev set 성능입니다. (998문서 / 정답 트리플 12,275개) 융합을 게이트 → concat+투영으로 바꾼 v5 구간에서 정밀도가 크게 올라 과예측이 해소되었습니다.
+
+| 체크포인트 | 융합 방식 | Micro F1 | 정밀도 | 재현율 | Ign F1 | Intra F1 | Inter F1 |
+|-----------|-----------|----------|--------|--------|--------|----------|----------|
+| Stage 3 v1 | gate | 49.86 | 46.29 | 54.04 | 46.58 | 60.42 | 39.79 |
+| Stage 3 v3 | (중간 개선) | 52.49 | 49.47 | 55.90 | 49.54 | 62.49 | 42.59 |
+| Stage 3 v5 | concat + 투영 | 60.39 | 64.93 | 56.45 | 58.17 | 67.29 | 52.06 |
+| **Stage 3 v6** | `0.5×그래프 + 원본` | **60.43** | **65.60** | 56.02 | **58.22** | **67.53** | 51.67 |
+
+> 학습된 전체 체크포인트는 [12. 모델 huggingFace 주소](#12-모델-huggingface-주소)를 참고하세요.
 
 ---
 
@@ -102,8 +160,8 @@ pipeline/
 │   └── build_kg.py             # KG 구축 스크립트
 │
 ├── notebooks/
-│   └── run_pipeline.ipynb      # 전체 파이프라인 실행 노트북 (Colab)
-│   └── run_pipeline_final.ipynb      # 전체 파이프라인 실행 노트북 (Colab) - 전체 (최종본)
+│   ├── run_pipeline.ipynb            # 전체 파이프라인 실행 노트북 (Colab)
+│   └── run_pipeline_final.ipynb      # 전체 파이프라인 실행 노트북 (Colab) - 최종본
 │
 └── requirements.txt
 ```
@@ -153,8 +211,53 @@ pipeline/
 
 ---
 
-## 4. 전체 파이프라인 흐름
-<img width="4032" height="3699" alt="image" src="https://github.com/user-attachments/assets/af47a16f-0b24-424f-9d22-e4482a0b3559" />
+## 4. 전체 아키텍처
+
+<img width="4032" height="3699" alt="architecture" src="https://github.com/user-attachments/assets/af47a16f-0b24-424f-9d22-e4482a0b3559" />
+
+### 모델 forward 분기 (`model.py`)
+
+같은 `DocREModel` 코드가 설정값에 따라 경로를 바꿉니다. 그래프 인코더는 Stage 3·4에서만 끼어들고, ATLOP 문맥 벡터(rs)는 분류기가 `atlop`일 때만 계산됩니다. 단계별 차이를 코드 분기가 아니라 **조건 한두 줄**로 흡수한 것이 통합 설계의 핵심입니다.
+
+```mermaid
+flowchart TD
+    B["batch (input_ids, masks, spans, pairs)"]
+    ENC["DocumentEncoder<br/>return_attention = (classifier==atlop)"]
+    HS["hidden_states"]
+    AT["attentions · ATLOP일 때만"]
+    ER["EntityRepresentation<br/>→ entity_vectors"]
+    CHK{"stage 가 3 또는 4 이고<br/>graph_encoder 가 존재?"}
+    GE["GraphEncoder<br/>GAIN-lite / Graph U-Net"]
+    SKIP["그대로 통과"]
+    RSQ{"classifier == atlop?"}
+    RSV["rs 문맥 벡터 계산<br/>(localized context pooling / fallback)"]
+    NORS["rs = None"]
+    RH["RelationHead"]
+    OUT["relation_logits<br/>(+ threshold_logits, evidence_logits)"]
+
+    B --> ENC
+    ENC --> HS --> ER
+    ENC --> AT --> ER
+    ER --> CHK
+    CHK -->|"예 (Stage 3·4)"| GE --> RSQ
+    CHK -->|"아니오 (Stage 1·2)"| SKIP --> RSQ
+    RSQ -->|"예 (Stage 2~4)"| RSV --> RH
+    RSQ -->|"아니오 (Stage 1)"| NORS --> RH
+    RH --> OUT
+```
+
+### Knowledge Graph 스키마 (`kg_builder.py`)
+
+후처리된 삼중항은 Neo4j에 개체 노드와 관계 엣지로 적재됩니다. 엣지에는 **stage 속성**을 함께 저장해, 같은 (head, relation, tail)이라도 단계별 예측을 구분하고 비교할 수 있게 했습니다.
+
+```mermaid
+flowchart LR
+    H(["Entity<br/>name · type · aliases"])
+    T(["Entity<br/>name · type · aliases"])
+    H -->|"REL · relation · stage · score · evidence"| T
+```
+
+### 레이어별 상세 텐서 흐름
 
 ```
 [DocRED JSON]
@@ -298,7 +401,7 @@ training:
 
 ### Stage 1 1차 평가 결과 (Epoch 15)
 
-![alt text](Stage01_F1.png)
+![Stage 1 F1](Stage01_F1.png)
 
 | Split | Precision | Recall | F1 | Ign F1 |
 |-------|-----------|--------|----|--------|
@@ -325,8 +428,8 @@ fix: BCEWithWeightLoss bug fix
 + pos_weight not applied due to missing argument
 ```
 
-
 ---
+
 ## 6. Stage 2 — ATLOP + DREEAM
 
 ### 개요
@@ -393,6 +496,21 @@ multi-hop 추론 능력을 강화합니다.
 Stage 2 체크포인트를 기반으로 전이 학습하며, Stage 4와의 Ablation 비교 대상입니다.
 
 - **GAIN** (Zeng et al., 2020): 이기종 Entity Graph + GCN 기반 message passing
+
+```mermaid
+flowchart TD
+    EV["entity_vectors [E, 768]<br/>(Stage 2 LogSumExp 결과)"]
+    BG["이기종 그래프 구성<br/>entity · sentence · document 노드<br/>same-sent · cross-sent · self-loop edge"]
+    MP["GCN / GAT 메시지 패싱 (2 layers)<br/>residual scaling α = 0.3"]
+    REF["graph-refined entity"]
+    FUSE["융합<br/>LayerNorm(0.5 × refined + 원본)"]
+    OUT["refined_entity_vectors [E, 768]"]
+
+    EV --> BG --> MP --> REF --> FUSE --> OUT
+    EV -->|"원본 강하게 보존"| FUSE
+```
+
+> 그래프 정보가 ATLOP backbone을 덮어 성능이 오히려 떨어지는 문제를 막기 위해, residual scaling(α=0.3)과 원본 보존 융합(`0.5 × 그래프 + 원본`)을 적용했습니다. 융합 방식 변천(gate → concat+투영 → 원본 강화)에 따른 실측 성능은 위의 [정량 평가 결과](#정량-평가-결과-stage-3)를 참고하세요.
 
 ### Stage 2 → Stage 3 변경 사항
 
@@ -496,6 +614,13 @@ training:
   load_checkpoint: "checkpoints/stage2/best_model.pt"   # Stage 2 전이 학습
 ```
 
+### Stage 3 1차 결과
+
+![Stage 3 결과](image.png)
+
+> F1 score: 58.76%, Precision: 65.65%, Recall: 53.19%
+> https://huggingface.co/jeongdell/Docred-stage3-gain
+
 ---
 
 ### Stage3 1차 결과
@@ -515,6 +640,19 @@ Stage 3의 Flat GNN(GAIN-lite) 대신 **계층적 Graph U-Net 구조**를 적용
 Stage 3과의 **Ablation Study** 목적으로, 둘 다 동일하게 **Stage 2 체크포인트**에서 시작합니다.
 
 - **Graph U-Net** (Gao & Ji, 2019): TopK 풀링 기반 계층적 그래프 표현 학습
+
+```mermaid
+flowchart LR
+    A["entity_vectors"] --> B["Encoder GNN"]
+    B --> C["TopK Pool<br/>상위 50% 노드 선별"]
+    C --> D["Bottleneck GNN<br/>global reasoning"]
+    D --> E["Unpool<br/>zero-padding 복원"]
+    E --> F["Skip 융합"]
+    B -.->|"skip connection"| F
+    F --> G["Decoder GNN"]
+    G --> H["Residual + LayerNorm"]
+    H --> OUT["refined_entity_vectors"]
+```
 
 ### Stage 3 vs Stage 4 핵심 차이
 
@@ -693,7 +831,7 @@ Stage 4:                               (Stage 2 ckpt 기반, Stage 3 Ablation)
 
 ## 10. 환경 설정 및 실행
 
-- 전체 설정은 pipeline 의 script 중 pipe_line_final 을 통해 진행할 수 있습니다.
+- 전체 설정은 pipeline 의 script 중 `run_pipeline_final` 을 통해 진행할 수 있습니다.
 
 ### 설치
 
@@ -798,13 +936,16 @@ CUDA를 사용할 수 없는 환경에서는 자동으로 CPU로 fallback 처리
 - [SSAN](https://github.com/BenfengXu/SSAN) — Xu et al. (2021)
 - [Graph U-Net](https://arxiv.org/abs/1905.05178) — Gao & Ji (2019)
 
-# 모델 huggingFace 주소
-[김예슬]
-- stage 2(v1,2) https://huggingface.co/yeseul0-0/docred-stage2-atlop-fine-tuning-v2
-- stage 3(v1,3,4,5,6) https://huggingface.co/yeseul0-0/docred-stage3-atlop-fine-tuning-v6
+---
 
-[박재윤]
-- stage 2(v1,2) https://huggingface.co/park990/hihi_model/tree/main
+## 12. 모델 huggingFace 주소
 
-[박정현]
-- stage 4 (1차실험) https://huggingface.co/jeongdell/Docred-stage3-gain
+**김예슬**
+- Stage 2 (v1, v2): https://huggingface.co/yeseul0-0/docred-stage2-atlop-fine-tuning-v2
+- Stage 3 (v1, v3, v4, v5, v6): https://huggingface.co/yeseul0-0/docred-stage3-atlop-fine-tuning-v6
+
+**박재윤**
+- Stage 2 (v1, v2): https://huggingface.co/park990/hihi_model/tree/main
+
+**박정현**
+- Stage 4 (1차 실험): https://huggingface.co/jeongdell/Docred-stage3-gain
